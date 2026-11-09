@@ -1,35 +1,35 @@
-// Colour Clash — a 2, 3 or 4 player territory battle on one phone.
+// Color Cover — a 2, 3 or 4 player territory battle on one phone.
 // Portrait only. No login, no internet needed. Free.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'data/game_data.dart';
+import 'screens/preloader_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/setup_screen.dart';
 import 'screens/how_to_play_screen.dart';
 import 'screens/game_screen.dart';
-import 'screens/result_screen.dart';
 import 'screens/modes_screen.dart';
 import 'screens/shop_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-  runApp(const ColourClashApp());
+  runApp(const ColorCoverApp());
 }
 
-class ColourClashApp extends StatelessWidget {
-  const ColourClashApp({super.key});
+class ColorCoverApp extends StatelessWidget {
+  const ColorCoverApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Colour Clash',
+      title: 'Color Cover',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF1A1033),
+        scaffoldBackgroundColor: const Color(0xFF1B1A1F),
         colorScheme: const ColorScheme.dark(
-          primary: Color(0xFFFF7BAC),
+          primary: Color(0xFFFD6EA3),
           secondary: Color(0xFF7C4DFF),
         ),
         useMaterial3: true,
@@ -43,13 +43,15 @@ class ColourClashApp extends StatelessWidget {
           style: ElevatedButton.styleFrom(
             padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
             textStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.zero),
           ),
         ),
       ),
       initialRoute: '/',
       routes: {
-        '/': (_) => const HomeScreen(),
+        '/': (_) => const PreloaderScreen(),
+        '/home': (_) => const HomeScreen(),
         '/how': (_) => const HowToPlayScreen(),
         '/modes': (_) => const ModesScreen(),
         '/shop': (_) => const ShopScreen(),
@@ -63,17 +65,13 @@ class ColourClashApp extends StatelessWidget {
           final config = settings.arguments as MatchConfig;
           return MaterialPageRoute(builder: (_) => GameScreen(config: config));
         }
-        if (settings.name == '/result') {
-          final args = settings.arguments as ResultArgs;
-          return MaterialPageRoute(builder: (_) => ResultScreen(args: args));
-        }
         return null;
       },
     );
   }
 }
 
-/// Big primary button used on every screen — large text, no overlap.
+/// Big primary button used on every screen — large text, flat, sharp corners.
 class BigButton extends StatelessWidget {
   const BigButton({super.key, required this.label, required this.onPressed, this.color});
   final String label;

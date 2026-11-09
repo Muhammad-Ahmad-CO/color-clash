@@ -1,21 +1,44 @@
-// Colour Clash — draws all 24 ball shapes + the arena.
-// Arena painter also draws the tile grid with a paint "pop" animation:
-// a tile that was just painted draws slightly larger for a moment.
+// Color Cover — draws all 24 ball shapes + the arena.
+// Reference look (REFERENCE_UI_SPEC.md): flat tiles with no grid lines and
+// no unpainted state, flat balls with no outline/gloss, power-up tiles as a
+// solid bright square + drawn icon (never a letter), "+" marks on wormhole
+// and recently converted tiles, trails only for Nitro / Colossus / shop
+// cosmetics — never in normal play.
 import 'dart:math';
 import 'package:flutter/material.dart';
 import '../data/game_data.dart';
 import '../game/engine.dart';
+import '../game/match_theme.dart';
 
-/// Draw one ball shape centred at [center] with radius [r].
+/// A 5-point (or N-point) star path centred at [center].
+Path starPath(Offset center, int points, double outer, double inner) {
+  final path = Path();
+  for (var i = 0; i < points * 2; i++) {
+    final rad = i.isEven ? outer : inner;
+    final a = -pi / 2 + i * pi / points;
+    final p = Offset(center.dx + cos(a) * rad, center.dy + sin(a) * rad);
+    if (i == 0) {
+      path.moveTo(p.dx, p.dy);
+    } else {
+      path.lineTo(p.dx, p.dy);
+    }
+  }
+  path.close();
+  return path;
+}
+
+/// Draw one ball shape centred at [center] with radius [r], flat fill only.
+/// No outline, no gloss, no shadow — the reference ball is a flat circle.
+/// [cutColor] is the colour under the ball (used by crescent/moon cut-outs).
 void drawBallShape(
-    Canvas canvas, BallShape shape, Offset center, double r, Color color) {
+    Canvas canvas, BallShape shape, Offset center, double r, Color color,
+    {Color? cutColor}) {
   final paint = Paint()
     ..color = color
     ..style = PaintingStyle.fill;
-  final outline = Paint()
-    ..color = Colors.white.withOpacity(0.85)
-    ..style = PaintingStyle.stroke
-    ..strokeWidth = max(1.5, r * 0.12);
+  final cut = Paint()
+    ..color = cutColor ?? const Color(0xFF1A1033)
+    ..style = PaintingStyle.fill;
 
   Path polygon(int sides, double rotation) {
     final path = Path();
@@ -32,45 +55,21 @@ void drawBallShape(
     return path;
   }
 
-  Path starPath(int points, double outer, double inner) {
-    final path = Path();
-    for (var i = 0; i < points * 2; i++) {
-      final rad = i.isEven ? outer : inner;
-      final a = -pi / 2 + i * pi / points;
-      final p = Offset(center.dx + cos(a) * rad, center.dy + sin(a) * rad);
-      if (i == 0) {
-        path.moveTo(p.dx, p.dy);
-      } else {
-        path.lineTo(p.dx, p.dy);
-      }
-    }
-    path.close();
-    return path;
-  }
-
   switch (shape) {
     case BallShape.circle:
       canvas.drawCircle(center, r, paint);
-      canvas.drawCircle(center, r, outline);
       break;
     case BallShape.square:
       canvas.drawRect(Rect.fromCenter(center: center, width: r * 1.7, height: r * 1.7), paint);
-      canvas.drawRect(Rect.fromCenter(center: center, width: r * 1.7, height: r * 1.7), outline);
       break;
     case BallShape.triangle:
-      final p = polygon(3, -pi / 2);
-      canvas.drawPath(p, paint);
-      canvas.drawPath(p, outline);
+      canvas.drawPath(polygon(3, -pi / 2), paint);
       break;
     case BallShape.diamond:
-      final p = polygon(4, 0);
-      canvas.drawPath(p, paint);
-      canvas.drawPath(p, outline);
+      canvas.drawPath(polygon(4, 0), paint);
       break;
     case BallShape.star:
-      final p = starPath(5, r, r * 0.45);
-      canvas.drawPath(p, paint);
-      canvas.drawPath(p, outline);
+      canvas.drawPath(starPath(center, 5, r, r * 0.45), paint);
       break;
     case BallShape.heart:
       final p = Path();
@@ -81,30 +80,21 @@ void drawBallShape(
           center.dy - r * 0.1, center.dx, center.dy + r * 0.9);
       p.close();
       canvas.drawPath(p, paint);
-      canvas.drawPath(p, outline);
       break;
     case BallShape.pentagon:
-      final p = polygon(5, -pi / 2);
-      canvas.drawPath(p, paint);
-      canvas.drawPath(p, outline);
+      canvas.drawPath(polygon(5, -pi / 2), paint);
       break;
     case BallShape.hexagon:
-      final p = polygon(6, 0);
-      canvas.drawPath(p, paint);
-      canvas.drawPath(p, outline);
+      canvas.drawPath(polygon(6, 0), paint);
       break;
     case BallShape.octagon:
-      final p = polygon(8, pi / 8);
-      canvas.drawPath(p, paint);
-      canvas.drawPath(p, outline);
+      canvas.drawPath(polygon(8, pi / 8), paint);
       break;
     case BallShape.oval:
       canvas.drawOval(Rect.fromCenter(center: center, width: r * 2.1, height: r * 1.4), paint);
-      canvas.drawOval(Rect.fromCenter(center: center, width: r * 2.1, height: r * 1.4), outline);
       break;
     case BallShape.crescent:
       canvas.drawCircle(center, r, paint);
-      final cut = Paint()..color = const Color(0xFF1A1033);
       canvas.drawCircle(center + Offset(r * 0.45, -r * 0.2), r * 0.85, cut);
       break;
     case BallShape.lightning:
@@ -117,7 +107,6 @@ void drawBallShape(
       p.lineTo(center.dx + r * 0.05, center.dy - r * 0.1);
       p.close();
       canvas.drawPath(p, paint);
-      canvas.drawPath(p, outline);
       break;
     case BallShape.teardrop:
       final p = Path();
@@ -126,7 +115,6 @@ void drawBallShape(
       p.quadraticBezierTo(center.dx - r, center.dy + r * 0.2, center.dx, center.dy - r);
       p.close();
       canvas.drawPath(p, paint);
-      canvas.drawPath(p, outline);
       break;
     case BallShape.cross:
       final w = r * 0.55;
@@ -134,7 +122,6 @@ void drawBallShape(
       p.addRect(Rect.fromCenter(center: center, width: w, height: r * 2));
       p.addRect(Rect.fromCenter(center: center, width: r * 2, height: w));
       canvas.drawPath(p, paint);
-      canvas.drawPath(p, outline);
       break;
     case BallShape.flower:
       for (var i = 0; i < 6; i++) {
@@ -148,7 +135,6 @@ void drawBallShape(
       break;
     case BallShape.moon:
       canvas.drawCircle(center, r, paint);
-      final cut = Paint()..color = const Color(0xFF1A1033);
       canvas.drawCircle(center + Offset(r * 0.5, 0), r * 0.9, cut);
       break;
     case BallShape.sun:
@@ -176,7 +162,6 @@ void drawBallShape(
       p.lineTo(center.dx + r * 0.3, center.dy + r * 0.7);
       p.close();
       canvas.drawPath(p, paint);
-      canvas.drawPath(p, outline);
       break;
     case BallShape.ring:
       canvas.drawCircle(
@@ -196,14 +181,15 @@ void drawBallShape(
       p.quadraticBezierTo(center.dx - r, center.dy - r * 0.8, center.dx, center.dy - r);
       p.close();
       canvas.drawPath(p, paint);
-      canvas.drawPath(p, outline);
       break;
     case BallShape.cube:
       final s = r * 0.8;
       canvas.drawRect(Rect.fromCenter(center: center, width: s * 1.6, height: s * 1.6), paint);
-      canvas.drawRect(Rect.fromCenter(center: center, width: s * 1.6, height: s * 1.6), outline);
       canvas.drawLine(Offset(center.dx - s * 0.8, center.dy - s * 0.8),
-          Offset(center.dx + s * 0.8, center.dy + s * 0.8), outline);
+          Offset(center.dx + s * 0.8, center.dy + s * 0.8),
+          Paint()
+            ..color = cut.color
+            ..strokeWidth = max(1.5, r * 0.1));
       break;
     case BallShape.pyramid:
       final p = Path();
@@ -212,7 +198,6 @@ void drawBallShape(
       p.lineTo(center.dx - r, center.dy + r * 0.8);
       p.close();
       canvas.drawPath(p, paint);
-      canvas.drawPath(p, outline);
       break;
     case BallShape.snowflake:
       final line = Paint()
@@ -241,6 +226,197 @@ void drawBallShape(
       canvas.drawArc(Rect.fromCircle(center: center, radius: r * 0.6), 0.15 * pi, 0.7 * pi, false, smile);
       break;
   }
+}
+
+/// Draw a power-up's icon glyph inside [rect] with [glyph] colour.
+/// Icons are drawn paths — never letters (reference §5).
+void drawPowerUpIcon(Canvas canvas, String id, Rect rect, Color glyph) {
+  final fill = Paint()
+    ..color = glyph
+    ..style = PaintingStyle.fill;
+  final stroke = Paint()
+    ..color = glyph
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = max(2, rect.height * 0.09)
+    ..strokeCap = StrokeCap.round;
+
+  Path bolt() {
+    final p = Path();
+    p.moveTo(rect.left + rect.width * 0.55, rect.top);
+    p.lineTo(rect.left + rect.width * 0.15, rect.top + rect.height * 0.55);
+    p.lineTo(rect.left + rect.width * 0.45, rect.top + rect.height * 0.55);
+    p.lineTo(rect.left + rect.width * 0.4, rect.top + rect.height);
+    p.lineTo(rect.left + rect.width * 0.85, rect.top + rect.height * 0.4);
+    p.lineTo(rect.left + rect.width * 0.55, rect.top + rect.height * 0.4);
+    p.close();
+    return p;
+  }
+
+  Path flame() {
+    final p = Path();
+    p.moveTo(rect.center.dx, rect.top + rect.height * 0.05);
+    p.cubicTo(rect.left + rect.width * 0.95, rect.top + rect.height * 0.35,
+        rect.left + rect.width * 0.85, rect.top + rect.height * 0.75,
+        rect.center.dx, rect.top + rect.height * 0.95);
+    p.cubicTo(rect.left + rect.width * 0.15, rect.top + rect.height * 0.75,
+        rect.left + rect.width * 0.05, rect.top + rect.height * 0.35,
+        rect.center.dx, rect.top + rect.height * 0.05);
+    p.close();
+    return p;
+  }
+
+  Path shield() {
+    final p = Path();
+    p.moveTo(rect.center.dx, rect.top);
+    p.lineTo(rect.left + rect.width * 0.9, rect.top + rect.height * 0.2);
+    p.lineTo(rect.left + rect.width * 0.9, rect.top + rect.height * 0.55);
+    p.quadraticBezierTo(rect.left + rect.width * 0.9, rect.top + rect.height * 0.9,
+        rect.center.dx, rect.top + rect.height);
+    p.quadraticBezierTo(rect.left + rect.width * 0.1, rect.top + rect.height * 0.9,
+        rect.left + rect.width * 0.1, rect.top + rect.height * 0.55);
+    p.lineTo(rect.left + rect.width * 0.1, rect.top + rect.height * 0.2);
+    p.close();
+    return p;
+  }
+
+  Path ghost() {
+    final p = Path();
+    p.moveTo(rect.left + rect.width * 0.1, rect.top + rect.height);
+    p.lineTo(rect.left + rect.width * 0.1, rect.top + rect.height * 0.45);
+    p.quadraticBezierTo(rect.left + rect.width * 0.1, rect.top,
+        rect.center.dx, rect.top);
+    p.quadraticBezierTo(rect.left + rect.width * 0.9, rect.top,
+        rect.left + rect.width * 0.9, rect.top + rect.height * 0.45);
+    p.lineTo(rect.left + rect.width * 0.9, rect.top + rect.height);
+    p.lineTo(rect.left + rect.width * 0.75, rect.top + rect.height * 0.85);
+    p.lineTo(rect.left + rect.width * 0.6, rect.top + rect.height);
+    p.lineTo(rect.left + rect.width * 0.4, rect.top + rect.height * 0.85);
+    p.lineTo(rect.left + rect.width * 0.25, rect.top + rect.height);
+    p.close();
+    return p;
+  }
+
+  Path upArrow() {
+    final p = Path();
+    p.moveTo(rect.center.dx, rect.top);
+    p.lineTo(rect.left + rect.width * 0.9, rect.top + rect.height * 0.55);
+    p.lineTo(rect.left + rect.width * 0.65, rect.top + rect.height * 0.55);
+    p.lineTo(rect.left + rect.width * 0.65, rect.top + rect.height);
+    p.lineTo(rect.left + rect.width * 0.35, rect.top + rect.height);
+    p.lineTo(rect.left + rect.width * 0.35, rect.top + rect.height * 0.55);
+    p.lineTo(rect.left + rect.width * 0.1, rect.top + rect.height * 0.55);
+    p.close();
+    return p;
+  }
+
+  switch (id) {
+    case 'speed':
+      canvas.drawPath(bolt(), fill);
+      break;
+    case 'nitro':
+      canvas.drawPath(flame(), fill);
+      break;
+    case 'wrecking':
+      canvas.drawPath(starPath(rect.center, 8, rect.width * 0.48, rect.width * 0.2), fill);
+      break;
+    case 'colossus':
+      canvas.drawPath(upArrow(), fill);
+      break;
+    case 'fortify':
+      canvas.drawPath(shield(), fill);
+      break;
+    case 'infiltrator':
+      // Diagonal arrow piercing through.
+      canvas.drawLine(
+          Offset(rect.left + rect.width * 0.15, rect.top + rect.height * 0.85),
+          Offset(rect.left + rect.width * 0.85, rect.top + rect.height * 0.15),
+          stroke);
+      canvas.drawPath(starPath(rect.center, 4, rect.width * 0.22, rect.width * 0.1), fill);
+      break;
+    case 'ghost':
+      canvas.drawPath(ghost(), fill);
+      break;
+    case 'blackhole':
+      canvas.drawCircle(rect.center, rect.width * 0.3, fill);
+      canvas.drawCircle(
+          rect.center,
+          rect.width * 0.44,
+          Paint()
+            ..color = glyph
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = max(2, rect.height * 0.08));
+      break;
+    case 'tidal':
+      for (var i = 0; i < 3; i++) {
+        final y = rect.top + rect.height * (0.28 + i * 0.22);
+        final p = Path();
+        p.moveTo(rect.left + rect.width * 0.05, y);
+        p.quadraticBezierTo(rect.left + rect.width * 0.28, y - rect.height * 0.12,
+            rect.left + rect.width * 0.5, y);
+        p.quadraticBezierTo(rect.left + rect.width * 0.72, y + rect.height * 0.12,
+            rect.left + rect.width * 0.95, y);
+        canvas.drawPath(p, stroke);
+      }
+      break;
+    case 'wormhole':
+      canvas.drawCircle(
+          rect.center,
+          rect.width * 0.42,
+          Paint()
+            ..color = glyph
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = max(2, rect.height * 0.09));
+      canvas.drawCircle(rect.center, rect.width * 0.18, fill);
+      break;
+    case 'bomb':
+      canvas.drawCircle(
+          Offset(rect.center.dx, rect.top + rect.height * 0.62),
+          rect.width * 0.32,
+          fill);
+      canvas.drawLine(
+          Offset(rect.center.dx + rect.width * 0.2, rect.top + rect.height * 0.38),
+          Offset(rect.center.dx + rect.width * 0.35, rect.top + rect.height * 0.12),
+          stroke);
+      canvas.drawCircle(
+          Offset(rect.center.dx + rect.width * 0.38, rect.top + rect.height * 0.08),
+          max(2, rect.width * 0.07),
+          fill);
+      break;
+    default:
+      canvas.drawPath(starPath(rect.center, 5, rect.width * 0.45, rect.width * 0.2), fill);
+  }
+}
+
+/// Small widget that draws a power-up icon (used in How to Play).
+/// [color] overrides the glyph colour; default is the power-up's own colour.
+class PowerUpIconWidget extends StatelessWidget {
+  const PowerUpIconWidget({super.key, required this.def, this.size = 34, this.color});
+  final PowerUpDef def;
+  final double size;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: Size(size, size),
+      painter: _PowerUpIconPainter(def, color),
+    );
+  }
+}
+
+class _PowerUpIconPainter extends CustomPainter {
+  _PowerUpIconPainter(this.def, this.color);
+  final PowerUpDef def;
+  final Color? color;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Rect.fromLTWH(size.width * 0.12, size.height * 0.12,
+        size.width * 0.76, size.height * 0.76);
+    drawPowerUpIcon(canvas, def.id, rect, color ?? Color(def.value));
+  }
+
+  @override
+  bool shouldRepaint(covariant _PowerUpIconPainter old) => old.def != def;
 }
 
 /// Small preview widget used in Setup's shape grid.
@@ -274,145 +450,192 @@ class _ShapePreviewPainter extends CustomPainter {
       old.shape != shape || old.color != color;
 }
 
-/// Paints the whole arena: tiles, power-ups, trails and balls.
+/// Paints the whole arena: flat tiles, power-ups, balls. No grid lines,
+/// no arena background, no border, no radius — the reference look.
 class ArenaPainter extends CustomPainter {
   ArenaPainter(this.engine, this.players, this.now, {this.trail = TrailType.none});
   final GameEngine engine;
   final List<PlayerConfig> players;
-  final double now; // engine.time, drives the pop animation
+  final double now; // engine.time, drives the "+" marks
   final TrailType trail;
+
+  Color _tileColor(int owner) => Color(players[owner].colour.value);
+
+  Color _tileColorAt(double x, double y) {
+    final c = x.floor().clamp(0, engine.cols - 1);
+    final r = y.floor().clamp(0, engine.rows - 1);
+    final owner = engine.grid[engine.tileIndex(c, r)];
+    if (owner < 0) return const Color(0xFF1A1033);
+    return _tileColor(owner);
+  }
+
+  void _drawPlus(Canvas canvas, Offset center, double size, Color color) {
+    final p = Paint()
+      ..color = color
+      ..strokeWidth = max(1.5, size * 0.18)
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(
+        Offset(center.dx - size / 2, center.dy), Offset(center.dx + size / 2, center.dy), p);
+    canvas.drawLine(
+        Offset(center.dx, center.dy - size / 2), Offset(center.dx, center.dy + size / 2), p);
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
     final tileW = size.width / engine.cols;
     final tileH = size.height / engine.rows;
+    final territoryColors =
+        players.map((p) => Color(p.colour.value)).toList();
+    final accent = powerUpTileColor(territoryColors);
+    final glyphColor = powerUpGlyphColor(accent);
 
-    // Tiles with a short "pop" after they are painted.
+    // Tiles: flat per-tile fill only. Dead/outside tiles are left
+    // transparent so the animated gradient shows through.
     for (var r = 0; r < engine.rows; r++) {
       for (var c = 0; c < engine.cols; c++) {
         final idx = engine.tileIndex(c, r);
         final owner = engine.grid[idx];
-        if (owner == -2 || !engine.playable[idx]) {
-          canvas.drawRect(
-              Rect.fromLTWH(c * tileW, r * tileH, tileW, tileH),
-              Paint()..color = const Color(0xFF0D0819));
-          continue;
-        }
-        if (owner < 0) continue;
-        final age = now - engine.paintTime[idx];
-        final pop = age < 0.25 ? 1 + (0.25 - age) * 0.8 : 1.0;
-        final w = tileW * pop;
-        final h = tileH * pop;
-        final rect = Rect.fromLTWH(
-          c * tileW + (tileW - w) / 2,
-          r * tileH + (tileH - h) / 2,
-          w,
-          h,
-        );
-        canvas.drawRect(rect,
-            Paint()..color = Color(players[owner].colour.value));
+        if (owner < 0 || !engine.playable[idx]) continue;
+        canvas.drawRect(
+            Rect.fromLTWH(c * tileW, r * tileH, tileW, tileH),
+            Paint()..color = _tileColor(owner));
       }
     }
 
-    // Faint grid lines.
-    final gridPaint = Paint()
-      ..color = Colors.white.withOpacity(0.06)
-      ..strokeWidth = 1;
-    for (var c = 1; c < engine.cols; c++) {
-      canvas.drawLine(Offset(c * tileW, 0), Offset(c * tileW, size.height), gridPaint);
-    }
-    for (var r = 1; r < engine.rows; r++) {
-      canvas.drawLine(Offset(0, r * tileH), Offset(size.width, r * tileH), gridPaint);
+    // Wormhole portal block: dark tiles with a pale "+".
+    if (engine.time < engine.wormholeUntil) {
+      for (final idx in engine.wormholeTiles) {
+        final c = idx % engine.cols;
+        final r = idx ~/ engine.cols;
+        canvas.drawRect(
+            Rect.fromLTWH(c * tileW, r * tileH, tileW, tileH),
+            Paint()..color = const Color(0xFF230040));
+        _drawPlus(
+            canvas,
+            Offset((c + 0.5) * tileW, (r + 0.5) * tileH),
+            tileW * 0.36,
+            Colors.white.withOpacity(0.9));
+      }
     }
 
-    // Golden Tile in the centre (Golden Rush mode).
+    // "+" marks on tiles converted in the last ~1.5 s.
+    for (var r = 0; r < engine.rows; r++) {
+      for (var c = 0; c < engine.cols; c++) {
+        final idx = engine.tileIndex(c, r);
+        final owner = engine.grid[idx];
+        if (owner < 0 || !engine.playable[idx]) continue;
+        final age = now - engine.paintTime[idx];
+        if (engine.paintTime[idx] > 0.01 && age >= 0 && age < 1.5) {
+          _drawPlus(
+              canvas,
+              Offset((c + 0.5) * tileW, (r + 0.5) * tileH),
+              tileW * 0.32,
+              contrastTextColor(_tileColor(owner)).withOpacity(0.85));
+        }
+      }
+    }
+
+    // Golden Tile (Golden Rush mode): gold square + drawn star.
     if (engine.goldenVisible && engine.goldenCol >= 0) {
-      final rect = Rect.fromLTWH(engine.goldenCol * tileW + 1, engine.goldenRow * tileH + 1,
-          tileW - 2, tileH - 2);
+      final rect = Rect.fromLTWH(engine.goldenCol * tileW,
+          engine.goldenRow * tileH, tileW, tileH);
       canvas.drawRect(rect, Paint()..color = const Color(0xFFFFCA28));
-      final tp = TextPainter(
-        text: const TextSpan(
-            text: '★',
-            style: TextStyle(color: Colors.black, fontSize: 20, fontWeight: FontWeight.w900)),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      tp.paint(canvas,
-          Offset(engine.goldenCol * tileW + (tileW - tp.width) / 2,
-              engine.goldenRow * tileH + (tileH - tp.height) / 2));
+      canvas.drawPath(
+          starPath(rect.center, 5, tileW * 0.32, tileW * 0.14),
+          Paint()..color = const Color(0xFF1A0A00));
     }
 
-    // Power-up tiles: dark square, coloured border, big letter.
+    // Power-up tiles: solid bright square + drawn icon glyph.
     for (final p in engine.powerUps) {
-      final rect = Rect.fromLTWH(
-          p.col * tileW + 1, p.row * tileH + 1, tileW - 2, tileH - 2);
-      canvas.drawRect(rect, Paint()..color = const Color(0xFF1A1033));
-      canvas.drawRect(
-          rect,
-          Paint()
-            ..color = Color(p.def.value)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 2);
-      final tp = TextPainter(
-        text: TextSpan(
-          text: p.def.letter,
-          style: TextStyle(
-            color: Color(p.def.value),
-            fontSize: tileH * 0.7,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      tp.paint(
-          canvas,
-          Offset(p.col * tileW + (tileW - tp.width) / 2,
-              p.row * tileH + (tileH - tp.height) / 2));
+      final rect = Rect.fromLTWH(p.col * tileW, p.row * tileH, tileW, tileH);
+      canvas.drawRect(rect, Paint()..color = accent);
+      final iconRect = Rect.fromLTWH(
+          p.col * tileW + tileW * 0.2,
+          p.row * tileH + tileH * 0.2,
+          tileW * 0.6,
+          tileH * 0.6);
+      drawPowerUpIcon(canvas, p.def.id, iconRect, glyphColor);
     }
 
-    // Ball trails, then balls.
+    // Balls.
     for (final b in engine.balls) {
       final cfg = players[b.player];
-      Color color = Color(cfg.colour.value);
+      final territory = Color(cfg.colour.value);
+      Color color = cueBallColor(territory);
       if (trail == TrailType.rainbow) {
         color = HSVColor.fromAHSV(1, (now * 120 + b.player * 90) % 360, 0.85, 1).toColor();
       } else if (trail == TrailType.golden) {
         color = const Color(0xFFFFCA28);
       }
+      final center = Offset(b.x * tileW, b.y * tileH);
       final isNitro = b.nitroUntil > engine.time;
-      for (var i = 0; i < b.trail.length; i++) {
-        final t = b.trail[i];
-        final alpha = (i / b.trail.length) * (isNitro ? 0.7 : 0.35);
-        final trailColor = trail == TrailType.fire
-            ? const Color(0xFFFF6D00)
-            : color;
-        final trailSize = trail == TrailType.glow
-            ? tileW * 0.7 * (0.4 + 0.6 * i / b.trail.length)
-            : tileW * 0.45 * (0.4 + 0.6 * i / b.trail.length);
-        canvas.drawCircle(
-          Offset(t.x * tileW, t.y * tileH),
-          trailSize,
-          Paint()..color = trailColor.withOpacity(alpha),
-        );
-      }
       final isColossus = b.colossusUntil > engine.time;
-      final radius = tileW * (isColossus ? 1.15 : 0.55);
-      // Soft glow behind the ball.
-      canvas.drawCircle(
-        Offset(b.x * tileW, b.y * tileH),
-        radius * 1.6,
-        Paint()..color = color.withOpacity(0.25),
-      );
+      final isBlackHole = b.blackHoleUntil > engine.time;
+
+      // Trails only for effects / shop cosmetics — never in normal play.
+      if (isNitro && b.trail.length > 1) {
+        // Gold streak behind the ball (reference Nitro).
+        final streak = Paint()
+          ..color = const Color(0xFFE7C168)
+          ..strokeWidth = tileW * 0.28
+          ..strokeCap = StrokeCap.round;
+        final path = Path();
+        path.moveTo(b.trail.first.x * tileW, b.trail.first.y * tileH);
+        for (final t in b.trail.skip(1)) {
+          path.lineTo(t.x * tileW, t.y * tileH);
+        }
+        path.lineTo(center.dx, center.dy);
+        canvas.drawPath(path, streak);
+      } else if (isColossus) {
+        // Fading ghost circles behind the giant ball.
+        for (var i = 0; i < b.trail.length; i++) {
+          final t = b.trail[i];
+          canvas.drawCircle(
+            Offset(t.x * tileW, t.y * tileH),
+            tileW * 0.6 * (0.3 + 0.7 * i / b.trail.length),
+            Paint()..color = color.withOpacity(0.12 + 0.25 * i / b.trail.length),
+          );
+        }
+      } else if (trail == TrailType.glow || trail == TrailType.fire) {
+        for (var i = 0; i < b.trail.length; i++) {
+          final t = b.trail[i];
+          final trailColor = trail == TrailType.fire
+              ? const Color(0xFFFF6D00)
+              : color;
+          canvas.drawCircle(
+            Offset(t.x * tileW, t.y * tileH),
+            tileW * 0.45 * (0.4 + 0.6 * i / b.trail.length),
+            Paint()..color = trailColor.withOpacity(0.35 * i / b.trail.length),
+          );
+        }
+      }
+
+      // Black Hole: near-black disc + orbiting debris.
+      if (isBlackHole) {
+        canvas.drawCircle(center, tileW * 0.9, Paint()..color = Colors.black);
+        for (var i = 0; i < 6; i++) {
+          final a = now * 3 + i * pi / 3;
+          canvas.drawCircle(
+              Offset(center.dx + cos(a) * tileW * 1.4,
+                  center.dy + sin(a) * tileW * 1.4),
+              max(1.5, tileW * 0.06),
+              Paint()..color = Colors.black87);
+        }
+      }
+
+      final radius = tileW * (isColossus ? 2.2 : 0.375);
       drawBallShape(
         canvas,
         cfg.shape,
-        Offset(b.x * tileW, b.y * tileH),
+        center,
         radius,
         color,
+        cutColor: _tileColorAt(b.x, b.y),
       );
       // Ghost balls look see-through.
       if (b.ghostUntil > engine.time) {
         canvas.drawCircle(
-          Offset(b.x * tileW, b.y * tileH),
+          center,
           radius,
           Paint()..color = Colors.white.withOpacity(0.25),
         );

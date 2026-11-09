@@ -1,4 +1,4 @@
-// Colour Clash — Setup screen.
+// Color Cover — Setup screen.
 // Pick 2, 3 or 4 players. Each player picks a name, one of 54 colours
 // (each colour can be used only once) and one of 24 ball shapes.
 import 'package:flutter/material.dart';
@@ -24,7 +24,7 @@ class _SetupScreenState extends State<SetupScreen> {
   BotDifficulty _botDifficulty = BotDifficulty.medium;
 
   /// Modes force the player count: Team 2v2 and Battle Royale need 4,
-  /// Vs Bot is 1 human + 1 bot (2 slots, P2 is the bot).
+  /// VS COMPUTER is 1 human + 1 computer (2 slots, P2 is the computer).
   bool get _countLocked =>
       _pack == ModePack.team2v2 || _pack == ModePack.battleRoyale || _pack == ModePack.vsBot;
 
@@ -39,7 +39,7 @@ class _SetupScreenState extends State<SetupScreen> {
       PlayerConfig(name: 'Player 3', colour: kColours[2], shape: BallShape.triangle),
       PlayerConfig(name: 'Player 4', colour: kColours[3], shape: BallShape.star),
     ];
-    if (_pack == ModePack.vsBot) _players[1].name = 'BOT';
+    if (_pack == ModePack.vsBot) _players[1].name = 'COMPUTER';
     CoinsService.load();
   }
 
@@ -86,12 +86,23 @@ class _SetupScreenState extends State<SetupScreen> {
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: const Color(0xFF7C4DFF).withOpacity(0.25),
-                  borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: const Color(0xFF7C4DFF), width: 1.5),
                 ),
                 child: Row(
                   children: [
-                    Text(modePackIcon(_pack), style: const TextStyle(fontSize: 28)),
+                    Container(
+                      width: 40,
+                      height: 40,
+                      color: const Color(0xFFFD6EA3),
+                      alignment: Alignment.center,
+                      child: Text(
+                        '${kModePacks.indexOf(_pack) + 1}',
+                        style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF210044)),
+                      ),
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
@@ -141,7 +152,7 @@ class _SetupScreenState extends State<SetupScreen> {
                   }).toList(),
                 ),
                 const SizedBox(height: 6),
-                const Text('You are Player 1. The BOT is Player 2 — no second joystick needed.',
+                const Text('You are Player 1. The COMPUTER is Player 2 — drag anywhere on the arena to steer.',
                     style: TextStyle(color: Colors.white70, fontSize: 14)),
                 const SizedBox(height: 18),
               ],
@@ -160,6 +171,8 @@ class _SetupScreenState extends State<SetupScreen> {
                     selectedColor: const Color(0xFFFF7BAC),
                     backgroundColor: Colors.white12,
                     labelStyle: const TextStyle(color: Colors.white),
+                    shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.zero),
                     onSelected: (_) => setState(() => _arenaShape = s),
                   );
                 }).toList(),
@@ -195,16 +208,16 @@ class _SetupScreenState extends State<SetupScreen> {
               if (_countLocked)
                 Text(
                   _pack == ModePack.vsBot
-                      ? 'Vs Bot: 1 human + 1 bot (fixed).'
+                      ? 'VS COMPUTER: 1 human + 1 computer (fixed).'
                       : 'This mode needs 4 players (fixed).',
                   style: const TextStyle(color: Colors.amber, fontSize: 15, fontWeight: FontWeight.w700),
                 ),
               Text(
                 _playerCount == 2
-                    ? '2 players: left half vs right half.'
+                    ? '2 players: drag in the left half vs the right half.'
                     : _playerCount == 3
-                        ? '3 players: three vertical thirds.'
-                        : '4 players: four corners (2 x 2).',
+                        ? '3 players: drag in three vertical thirds.'
+                        : '4 players: drag in four corners (2 x 2).',
                 style: const TextStyle(color: Colors.white70, fontSize: 15),
               ),
               const SizedBox(height: 18),
@@ -220,12 +233,10 @@ class _SetupScreenState extends State<SetupScreen> {
                       padding: const EdgeInsets.only(right: 8),
                       child: InkWell(
                         onTap: () => setState(() => _editing = i),
-                        borderRadius: BorderRadius.circular(14),
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
                           decoration: BoxDecoration(
                             color: selected ? Color(p.colour.value).withOpacity(0.35) : Colors.white10,
-                            borderRadius: BorderRadius.circular(14),
                             border: Border.all(
                                 color: selected ? Color(p.colour.value) : Colors.white24, width: 2),
                           ),
@@ -255,7 +266,7 @@ class _SetupScreenState extends State<SetupScreen> {
                       TextPosition(offset: current.name.length)),
                 decoration: InputDecoration(
                   labelText: 'Player ${_editing + 1} name',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                  border: const OutlineInputBorder(),
                   filled: true,
                   fillColor: Colors.white10,
                 ),
@@ -264,13 +275,12 @@ class _SetupScreenState extends State<SetupScreen> {
               const SizedBox(height: 18),
               Row(
                 children: [
-                  const Text('Colour — 54 to choose',
+                  const Text('Color — 54 to choose',
                       style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
                   const Spacer(),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                        color: Color(current.colour.value), borderRadius: BorderRadius.circular(20)),
+                    color: Color(current.colour.value),
                     child: Text(current.colour.name,
                         style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
                   ),
@@ -290,11 +300,9 @@ class _SetupScreenState extends State<SetupScreen> {
                   final taken = takenBy >= 0 && takenBy != _editing;
                   return InkWell(
                     onTap: () => _pickColour(c),
-                    borderRadius: BorderRadius.circular(12),
                     child: Container(
                       decoration: BoxDecoration(
                         color: Color(c.value),
-                        borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                             color: selected ? Colors.white : Colors.white24,
                             width: selected ? 3 : 1),
@@ -328,12 +336,10 @@ class _SetupScreenState extends State<SetupScreen> {
                       setState(() => current.shape = s);
                       SoundFx.click();
                     },
-                    borderRadius: BorderRadius.circular(12),
                     child: Container(
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
                         color: selected ? Color(current.colour.value).withOpacity(0.35) : Colors.white10,
-                        borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                             color: selected ? Color(current.colour.value) : Colors.white24,
                             width: selected ? 3 : 1),
@@ -354,7 +360,7 @@ class _SetupScreenState extends State<SetupScreen> {
               ),
               const SizedBox(height: 22),
               BigButton(
-                label: 'START BATTLE  ▶',
+                label: 'START BATTLE',
                 color: const Color(0xFFFF7BAC),
                 onPressed: () {
                   SoundFx.click();

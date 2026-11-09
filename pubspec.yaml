@@ -1,5 +1,5 @@
 name: color_clash
-description: "Colour Clash - a 2, 3 or 4 player territory battle on one phone. Paint the arena, steal the tiles, win in 90 seconds."
+description: "Color Cover - a 2, 3 or 4 player territory battle on one phone. Paint the arena, steal the tiles, win in 90 seconds."
 publish_to: "none"
 version: 1.0.0+1
 
@@ -19,3 +19,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/logo.png

@@ -1,17 +1,27 @@
-// Colour Clash — game engine (pure logic, no widgets).
-// Grid: 18 columns x 28 rows. Balls move in tile coordinates, bounce
-// off walls, paint tiles they cross. Match length: 90 seconds.
-// Modes (see Modes screen): Ultimate Meter/Tsunami, Bomb Ball, Golden
-// Tile, Sudden Death shrinking, Chaos Events, Team 2v2, Battle Royale,
-// Vs Bot. Flags come from MatchConfig.pack — All Chaos enables 1-5.
+// Color Cover — game engine (pure logic, no widgets).
+// Grid: 18 columns x 24 rows (reference arena is 3:4). Balls move in tile
+// coordinates, bounce off walls, paint tiles they cross. Match length:
+// 90 seconds. Modes (see Modes screen): Ultimate Meter/Tsunami, Bomb Ball,
+// Golden Tile, Sudden Death shrinking, Chaos Events, Team 2v2, Battle
+// Royale, VS COMPUTER. Flags come from MatchConfig.pack — All Chaos
+// enables 1-5.
 import 'dart:math';
 import '../data/game_data.dart';
+import 'match_theme.dart';
 
 class PowerUpOnField {
   PowerUpOnField(this.col, this.row, this.def);
   final int col;
   final int row;
   final PowerUpDef def;
+}
+
+/// One stacked power-up banner (reference: newest on top, ~2-4 s visible).
+class MatchBanner {
+  MatchBanner(this.player, this.text, this.until);
+  final int player;
+  final String text;
+  final double until;
 }
 
 class BallState {
@@ -35,7 +45,7 @@ class GameEngine {
   GameEngine(this.config)
       : players = config.players,
         cols = 18,
-        rows = 28,
+        rows = 24,
         matchSeconds = 90 {
     grid = List<int>.filled(cols * rows, -1);
     paintTime = List<double>.filled(cols * rows, -1000);
@@ -76,9 +86,19 @@ class GameEngine {
   double timeLeft = 90;
   double _spawnTimer = 6;
   bool finished = false;
-  String bannerText = '';
-  double bannerUntil = 0;
-  int bannerPlayer = 0;
+
+  /// Active power-up banners (reference stacks up to 4 at once, newest on
+  /// top). Each entry: (player, text, visible-until time).
+  final List<MatchBanner> banners = <MatchBanner>[];
+  // Backwards-compatible single-banner view: the newest active banner.
+  String get bannerText => banners.isEmpty ? '' : banners.last.text;
+  double get bannerUntil => banners.isEmpty ? 0 : banners.last.until;
+  int get bannerPlayer => banners.isEmpty ? 0 : banners.last.player;
+
+  /// Tiles the engine just marked (e.g. a Wormhole portal block) that the
+  /// painter draws dark with a "+" while [wormholeUntil] has not passed.
+  final Set<int> wormholeTiles = <int>{};
+  double wormholeUntil = 0;
   final Map<int, Point<double>> steering = <int, Point<double>>{};
   final List<double> fortifyUntil = <double>[0, 0, 0, 0];
 
@@ -259,6 +279,9 @@ class GameEngine {
     return '${players[winnerIndex()].name.toUpperCase()} DOMINATES!';
   }
 
+  /// "1 minute 28 seconds" — the reference end-card duration line.
+  String matchDurationLabel() => formatDuration(time);
+
   double _ballSpeed(BallState b) {
     var s = 7.0;
     if (b.speedUntil > time) s *= 1.33;
@@ -272,7 +295,7 @@ class GameEngine {
     return s;
   }
 
-  double _ballRadius(BallState b) => b.colossusUntil > time ? 1.15 : 0.55;
+  double _ballRadius(BallState b) => b.colossusUntil > time ? 2.2 : 0.375;
 
   int _paintRadius(BallState b) {
     if (b.wreckingUntil > time || b.colossusUntil > time) return 2;
@@ -304,7 +327,7 @@ class GameEngine {
     }
   }
 
-  /// Colour Tsunami: convert the ball's full row to this player's colour.
+  /// Color Tsunami: convert the ball's full row to this player's colour.
   /// Only works when the Ultimate Meter is full (100).
   bool tsunami(int player) {
     if (!ultimateEnabled) return false;
@@ -318,14 +341,13 @@ class GameEngine {
       paintTime[idx] = time;
     }
     ultimateMeters[player] = 0;
-    _showBanner(player, 'COLOUR TSUNAMI!');
+    _showBanner(player, 'COLOR TSUNAMI!');
     return true;
   }
 
   void _showBanner(int player, String text) {
-    bannerPlayer = player;
-    bannerText = text;
-    bannerUntil = time + 3;
+    banners.add(MatchBanner(player, text, time + 3));
+    if (banners.length > 4) banners.removeAt(0);
   }
 
   void _placeGoldenTile() {
@@ -405,9 +427,20 @@ class GameEngine {
         }
         break;
       case 'wormhole':
+        // Teleport to a random tile and mark a 2x4 portal block there
+        // (reference draws it as dark tiles with "+" marks).
         b.x = _rng.nextInt(cols).toDouble() + 0.5;
         b.y = _rng.nextInt(rows).toDouble() + 0.5;
         b.trail.clear();
+        wormholeTiles.clear();
+        final bx = (b.x.round() - 1).clamp(0, cols - 2);
+        final by = (b.y.round() - 2).clamp(0, rows - 4);
+        for (var r = by; r < by + 4; r++) {
+          for (var c = bx; c < bx + 2; c++) {
+            wormholeTiles.add(tileIndex(c, r));
+          }
+        }
+        wormholeUntil = time + 3;
         break;
     }
   }
@@ -503,6 +536,10 @@ class GameEngine {
       return;
     }
 
+    // Drop expired banners (and expired wormhole marks).
+    banners.removeWhere((b) => time >= b.until);
+    if (time >= wormholeUntil) wormholeTiles.clear();
+
     // Sudden Death: last 10 seconds, arena shrinks one ring at a time.
     if (suddenDeathEnabled && timeLeft <= 10) {
       shrinkLevel = ((10 - timeLeft) / 3).ceil().clamp(0, 3);
@@ -522,7 +559,9 @@ class GameEngine {
           for (var i = 0; i < 3; i++) {
             final idx = _rng.nextInt(grid.length);
             if (playable[idx] && grid[idx] >= 0 && isPlayableTile(idx % cols, idx ~/ cols)) {
-              grid[idx] = -1;
+              // FIRE converts tiles to a random player — the reference has
+              // no unpainted tiles, so tiles are never set to -1.
+              grid[idx] = _rng.nextInt(players.length);
               paintTime[idx] = time;
             }
           }
@@ -542,8 +581,17 @@ class GameEngine {
       if (lowest >= 0) {
         eliminated.add(lowest);
         balls.removeWhere((b) => b.player == lowest);
+        // The eliminated player's tiles go to the current leader — the
+        // reference has no unpainted tiles, so tiles are never set to -1.
+        final aliveCounts = tileCounts();
+        var leader = -1;
+        for (var i = 0; i < players.length; i++) {
+          if (eliminated.contains(i)) continue;
+          if (leader < 0 || aliveCounts[i] > aliveCounts[leader]) leader = i;
+        }
+        if (leader < 0) leader = 0;
         for (var i = 0; i < grid.length; i++) {
-          if (grid[i] == lowest) grid[i] = -1;
+          if (grid[i] == lowest) grid[i] = leader;
         }
         _showBanner(lowest, '${players[lowest].name.toUpperCase()} IS OUT!');
         final alive = players.length - eliminated.length;

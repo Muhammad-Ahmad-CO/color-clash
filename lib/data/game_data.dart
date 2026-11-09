@@ -1,4 +1,4 @@
-// Colour Clash — static game data.
+// Color Cover — static game data.
 // Counts are fixed by design: 54 colours, 24 ball shapes,
 // 10 base power-ups + Bomb Ball = 11 total power-ups.
 // Do not change the counts without updating Setup + README.
@@ -219,7 +219,7 @@ const List<PowerUpDef> kPowerUps = [
   PowerUpDef('blackhole', 'BLACK HOLE', 'Pulls enemy balls towards you for 5 seconds.', 'B', 0xFF212121),
   PowerUpDef('tidal', 'TIDAL WAVE', 'Instantly paints your full row and column.', 'T', 0xFF00BCD4),
   PowerUpDef('wormhole', 'WORMHOLE', 'Teleports your ball to a random tile.', 'H', 0xFF7C4DFF),
-  PowerUpDef('bomb', 'BOMB BALL', 'Explodes a 5x5 area to your colour!', '💣', 0xFF212121),
+  PowerUpDef('bomb', 'BOMB BALL', 'Explodes a 5x5 area to your colour!', 'B', 0xFF212121),
 ];
 
 PowerUpDef powerUpById(String id) =>
@@ -237,7 +237,7 @@ String gameModeName(GameMode m) {
     case GameMode.battleRoyale:
       return 'Battle Royale';
     case GameMode.vsBot:
-      return 'Vs Bot';
+      return 'VS COMPUTER';
   }
 }
 
@@ -361,6 +361,7 @@ enum ModePack {
 }
 
 const List<ModePack> kModePacks = [
+  ModePack.vsBot,
   ModePack.ultimate,
   ModePack.bomb,
   ModePack.golden,
@@ -368,7 +369,6 @@ const List<ModePack> kModePacks = [
   ModePack.chaos,
   ModePack.team2v2,
   ModePack.battleRoyale,
-  ModePack.vsBot,
   ModePack.allChaos,
 ];
 
@@ -389,7 +389,7 @@ String modePackName(ModePack p) {
     case ModePack.battleRoyale:
       return 'Battle Royale';
     case ModePack.vsBot:
-      return 'Vs Bot';
+      return 'VS COMPUTER';
     case ModePack.allChaos:
       return 'Sab Kuch / All Chaos';
   }
@@ -398,7 +398,7 @@ String modePackName(ModePack p) {
 String modePackDesc(ModePack p) {
   switch (p) {
     case ModePack.ultimate:
-      return 'Fill your Ultimate Meter, then fire a Colour Tsunami.';
+      return 'Fill your Ultimate Meter, then fire a Color Tsunami.';
     case ModePack.bomb:
       return 'Bomb Balls explode a 5x5 area to your colour.';
     case ModePack.golden:
@@ -415,29 +415,6 @@ String modePackDesc(ModePack p) {
       return 'You vs the computer: Easy, Medium or Crazy.';
     case ModePack.allChaos:
       return 'Modes 1-5 together: Ultimate, Bomb, Golden, Sudden Death, Chaos.';
-  }
-}
-
-String modePackIcon(ModePack p) {
-  switch (p) {
-    case ModePack.ultimate:
-      return '⚡';
-    case ModePack.bomb:
-      return '💣';
-    case ModePack.golden:
-      return '⭐';
-    case ModePack.suddenDeath:
-      return '⏳';
-    case ModePack.chaos:
-      return '🌪️';
-    case ModePack.team2v2:
-      return '👥';
-    case ModePack.battleRoyale:
-      return '👑';
-    case ModePack.vsBot:
-      return '🤖';
-    case ModePack.allChaos:
-      return '🔥';
   }
 }
 

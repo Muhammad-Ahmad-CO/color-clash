@@ -1,6 +1,7 @@
-// Colour Clash — How to Play (simple English).
+// Color Cover — How to Play (simple English).
 import 'package:flutter/material.dart';
 import '../data/game_data.dart';
+import '../widgets/ball_painter.dart';
 
 class HowToPlayScreen extends StatelessWidget {
   const HowToPlayScreen({super.key});
@@ -22,13 +23,13 @@ class HowToPlayScreen extends StatelessWidget {
               _Step('1', 'Pick your players',
                   'Choose 2, 3 or 4 players. Each player picks a name, a colour (54 colours) and a ball shape (24 shapes). No two players can pick the same colour.'),
               _Step('2', 'Steer your ball',
-                  'Your ball moves on its own. Drag your joystick to steer it. P1 uses the bottom-left joystick, P2 bottom-right, P3 top, P4 top-right. All players can steer at the same time — use different fingers.'),
+                  'Your ball moves on its own. Touch anywhere in your zone and drag to steer it. 2 players: left half vs right half. 3 players: three vertical thirds. 4 players: four corners. All players can steer at the same time — use different fingers.'),
               _Step('3', 'Paint the arena',
                   'Wherever your ball goes, the tiles change to your colour. Take tiles from other players by driving over them. The player with the most tiles at the end wins.'),
               _Step('4', 'Grab power-ups',
-                  'A power-up tile appears every 6 seconds (maximum 3 on the field). Drive over it to use it. The name shows at the top of the screen for 3 seconds.'),
+                  'A power-up tile appears every 6 seconds (maximum 3 on the field). Drive over it to use it. A banner with its name shows above the arena for a few seconds.'),
               _Step('5', 'Win in 90 seconds',
-                  'The match lasts 90 seconds. When the timer hits 0, the player with the biggest area wins and sees "DOMINATES!" on the result screen.'),
+                  'The match lasts 90 seconds. When time is up, the player with the biggest area wins — the end card shows "<NAME> DOMINATES!" right on the arena.'),
               SizedBox(height: 16),
               Text('MODES — PICK ONE ON HOME',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
@@ -36,7 +37,7 @@ class HowToPlayScreen extends StatelessWidget {
               Text('Ultimate Clash: fill the meter, tap TSUNAMI. Bomb Battle: Bomb Balls explode 5x5. '
                   'Golden Rush: touch the star tile for double paint. Sudden Death: arena shrinks in the last 10 seconds. '
                   'Chaos Mode: Earthquake, Ice or Fire every 20 seconds. Team 2v2: P1+P3 vs P2+P4. '
-                  'Battle Royale: lowest player is out every 30 seconds. Vs Bot: play alone vs Easy, Medium or Crazy. '
+                  'Battle Royale: lowest player is out every 30 seconds. VS COMPUTER: play alone vs Easy, Medium or Crazy. '
                   'Sab Kuch / All Chaos: modes 1-5 together.',
                   style: TextStyle(fontSize: 16, height: 1.5, color: Colors.white70)),
               const SizedBox(height: 16),
@@ -75,7 +76,7 @@ class _Step extends StatelessWidget {
           Container(
             width: 38, height: 38,
             alignment: Alignment.center,
-            decoration: const BoxDecoration(color: Color(0xFFFF7BAC), shape: BoxShape.circle),
+            color: const Color(0xFFFF7BAC),
             child: Text(num, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: Colors.white)),
           ),
           const SizedBox(width: 12),
@@ -104,16 +105,15 @@ class _PowerUpList extends StatelessWidget {
         return Container(
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12)),
+          color: Colors.white10,
           child: Row(
             children: [
               Container(
                 width: 34, height: 34,
                 alignment: Alignment.center,
-                decoration: BoxDecoration(
-                    color: Color(p.value), borderRadius: BorderRadius.circular(8)),
-                child: Text(p.letter,
-                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.white)),
+                color: const Color(0xFFF5DA69),
+                child: PowerUpIconWidget(
+                    def: p, color: const Color(0xFF230040), size: 22),
               ),
               const SizedBox(width: 12),
               Expanded(

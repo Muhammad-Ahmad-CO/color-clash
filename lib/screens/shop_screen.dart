@@ -1,4 +1,4 @@
-// Colour Clash — Coins + Shop (separate section, NOT in Modes).
+// Color Cover — Coins + Shop (separate section, NOT in Modes).
 // Win a match = 50 coins, finish a match = 10 coins. Coins are stored
 // on the phone. Shop sells ball trails: Glow, Fire, Rainbow, Golden.
 import 'package:flutter/material.dart';
@@ -41,12 +41,24 @@ class _ShopScreenState extends State<ShopScreen> {
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
                       color: const Color(0xFFFFCA28).withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: const Color(0xFFFFCA28), width: 1.5),
                     ),
                     child: Row(
                       children: [
-                        const Text('🪙', style: TextStyle(fontSize: 36)),
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFFFCA28),
+                            shape: BoxShape.circle,
+                          ),
+                          alignment: Alignment.center,
+                          child: const Text('C',
+                              style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w900,
+                                  color: Color(0xFF1A0A00))),
+                        ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
@@ -71,7 +83,8 @@ class _ShopScreenState extends State<ShopScreen> {
                     final equipped = CoinsService.equippedTrail == item.trail;
                     return Card(
                       color: Colors.white10,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.zero),
                       margin: const EdgeInsets.only(bottom: 12),
                       child: Padding(
                         padding: const EdgeInsets.all(16),
@@ -86,7 +99,7 @@ class _ShopScreenState extends State<ShopScreen> {
                                   Text(item.desc,
                                       style: const TextStyle(color: Colors.white70, fontSize: 14)),
                                   const SizedBox(height: 6),
-                                  Text(owned ? (equipped ? 'EQUIPPED ✓' : 'OWNED') : '🪙 ${item.cost} coins',
+                                  Text(owned ? (equipped ? 'EQUIPPED ✓' : 'OWNED') : '${item.cost} COINS',
                                       style: TextStyle(
                                           fontWeight: FontWeight.w800,
                                           color: owned ? Colors.greenAccent : const Color(0xFFFFCA28))),
@@ -136,7 +149,8 @@ class _ShopScreenState extends State<ShopScreen> {
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       side: const BorderSide(color: Colors.white54),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.zero),
                     ),
                     child: const Text('USE NORMAL TRAIL',
                         style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
