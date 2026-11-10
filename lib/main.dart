@@ -51,7 +51,7 @@ class ColorCoverApp extends StatelessWidget {
               fontWeight: FontWeight.w900,
               color: Colors.white),
         ),
-        dialogTheme: const DialogTheme(
+        dialogTheme: const DialogThemeData(
           backgroundColor: DcColors.panel,
           titleTextStyle: TextStyle(
               fontSize: 20,
