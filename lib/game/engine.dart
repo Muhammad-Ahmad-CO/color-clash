@@ -1,6 +1,8 @@
 // Color Cover — game engine (pure logic, no widgets).
 // Grid: 18 columns x 24 rows (reference arena is 3:4). Balls move in tile
-// coordinates, bounce off walls, paint tiles they cross. Match length:
+// coordinates, bounce off walls, and push the border: a ball converts
+// a tile only where it touches its own territory (one block at a time,
+// like the reference videos). Match length:
 // 90 seconds. Modes (see Modes screen): Ultimate Meter/Tsunami, Bomb Ball,
 // Golden Tile, Sudden Death shrinking, Chaos Events, Team 2v2, Battle
 // Royale, VS COMPUTER. Flags come from MatchConfig.pack — All Chaos
@@ -294,6 +296,10 @@ class GameEngine {
       Point(cols * 0.5, rows * 0.25),
       Point(cols * 0.75, rows * 0.75),
     ];
+    // 3 players: P1's ball starts in the middle third (9, 12). The old
+    // (13.5, 12) sat in P2's third, and under the border-push rule P1
+    // would paint nothing until it travelled back to the border.
+    if (players.length == 3) starts[1] = Point(cols * 0.5, rows * 0.5);
     if (players.length == 3) starts[2] = Point(cols * 0.83, rows * 0.5);
     if (players.length == 4) {
       starts[0] = Point(cols * 0.25, rows * 0.25);
@@ -412,9 +418,12 @@ class GameEngine {
   /// since their last conversion is under 2 seconds, else it restarts
   /// at 1. Bomb/Tidal/Tsunami also paint through here, so a big blast
   /// counts as a big combo — that is the reward for the blast.
-  void _setTile(int idx, int player) {
-    if (_isTurretTileIdx(idx)) return;
-    if (grid[idx] == player) return;
+  /// Returns true iff the tile actually changed owner (false for a
+  /// turret tile or a tile the player already owns). The Ultimate Meter
+  /// grows only on real conversions — see _paintAround.
+  bool _setTile(int idx, int player) {
+    if (_isTurretTileIdx(idx)) return false;
+    if (grid[idx] == player) return false;
     grid[idx] = player;
     paintTime[idx] = time;
     tilesPainted[player]++;
@@ -434,14 +443,74 @@ class GameEngine {
         _showBanner(player, 'COMBO x$m!', 'Keep painting — no gaps!');
       }
     }
+    return true;
+  }
+
+  /// BORDER-PUSH (reference video): does tile (c, r) touch territory
+  /// owned by [player]'s team? A neighbour counts iff it is playable
+  /// and owned by the same team (fortified own tiles still count —
+  /// fortify protects, it does not un-own). A tile with NO playable
+  /// neighbour at all (e.g. a Maze singleton whose 4 neighbours are
+  /// walls) counts as touching: adjacency could never be satisfied
+  /// there, so direct contact converts it.
+  bool _touchesOwnTerritory(int c, int r, int player) {
+    var hasPlayableNeighbour = false;
+    const dirs = [
+      Point<int>(1, 0),
+      Point<int>(-1, 0),
+      Point<int>(0, 1),
+      Point<int>(0, -1),
+    ];
+    for (final d in dirs) {
+      final nc = c + d.x;
+      final nr = r + d.y;
+      if (!isPlayableTile(nc, nr)) continue;
+      hasPlayableNeighbour = true;
+      final owner = grid[tileIndex(nc, nr)];
+      if (owner >= 0 && teamOf(owner) == teamOf(player)) return true;
+    }
+    return !hasPlayableNeighbour;
+  }
+
+  /// MERCY: a player (or their team in Team 2v2) that owns zero
+  /// PLAYABLE tiles may repaint its centre tile to restart a territory.
+  /// Only playable tiles count: in Sudden Death a player owning only
+  /// shrunk-ring tiles would otherwise never trigger mercy while the
+  /// ball is confined inside. Never resurrects a Battle Royale
+  /// elimination (eliminated players have no balls, but the guard is
+  /// explicit): it applies only to players still alive in the match.
+  /// Once the seed tile is painted the team owns 1 tile and mercy
+  /// switches off — it cannot be exploited into paint-anywhere.
+  bool _mercyApplies(int player) {
+    if (isBattleRoyale && eliminated.contains(player)) return false;
+    final team = teamOf(player);
+    for (var i = 0; i < grid.length; i++) {
+      final owner = grid[i];
+      if (owner < 0 || teamOf(owner) != team) continue;
+      if (!isPlayableTile(i % cols, i ~/ cols)) continue;
+      return false; // the team still owns a playable tile.
+    }
+    return true;
   }
 
   void _paintAround(BallState b) {
     final radius = _paintRadius(b);
     final cc = b.x.round();
     final rr = b.y.round();
+    // Candidates are tested against the grid as it stands when this
+    // call starts (two-pass): a tile converted by this same call must
+    // not unlock its neighbour in the same frame — the border advances
+    // one block at a time, never in a chain.
+    final mercy = _mercyApplies(b.player);
+    // INFILTRATOR is the one ball-painting bypass: its fantasy is
+    // painting deep behind enemy lines (10 s, earned by pickup).
+    final infiltrator = b.infiltratorUntil > time;
+    final candidates = <int>[];
     for (var dr = -radius; dr <= radius; dr++) {
       for (var dc = -radius; dc <= radius; dc++) {
+        // Base painting is the centre tile only. Buff radii (Wrecking
+        // Ball / Colossus / double paint) widen the candidate disc.
+        if (radius == 1 && (dc != 0 || dr != 0)) continue;
         if (dc * dc + dr * dr > radius * radius + 1) continue;
         final c = cc + dc;
         final r = rr + dr;
@@ -450,11 +519,18 @@ class GameEngine {
         final owner = grid[idx];
         if (owner == b.player) continue;
         if (owner >= 0 && fortifyUntil[owner] > time) continue;
-        _setTile(idx, b.player);
-        if (ultimateEnabled) {
-          ultimateMeters[b.player] =
-              (ultimateMeters[b.player] + (b.doublePaintUntil > time ? 6 : 3)).clamp(0, 100);
-        }
+        // Mercy exempts only the centre tile: the seed is one tile,
+        // and it regrows outward one block at a time from there.
+        if (!infiltrator &&
+            !(mercy && dc == 0 && dr == 0) &&
+            !_touchesOwnTerritory(c, r, b.player)) continue;
+        candidates.add(idx);
+      }
+    }
+    for (final idx in candidates) {
+      if (_setTile(idx, b.player) && ultimateEnabled) {
+        ultimateMeters[b.player] =
+            (ultimateMeters[b.player] + (b.doublePaintUntil > time ? 6 : 3)).clamp(0, 100);
       }
     }
   }
@@ -632,8 +708,28 @@ class GameEngine {
       case 'wormhole':
         // Teleport to a random tile and mark a 2x4 portal block there
         // (reference draws it as dark tiles with "+" marks).
-        b.x = _rng.nextInt(cols).toDouble() + 0.5;
-        b.y = _rng.nextInt(rows).toDouble() + 0.5;
+        // The landing is on a border tile (own territory or adjacent
+        // to it) so the ball can keep painting right away — a deep
+        // random landing would strand it under the border-push rule.
+        // No border tile sampled (owns nothing): random landing — the
+        // mercy rule lets the ball repaint from wherever it lands.
+        var landed = false;
+        for (var tries = 0; tries < 24 && !landed; tries++) {
+          final c = _rng.nextInt(cols);
+          final r = _rng.nextInt(rows);
+          if (!isPlayableTile(c, r)) continue;
+          final owner = grid[tileIndex(c, r)];
+          if ((owner >= 0 && teamOf(owner) == teamOf(b.player)) ||
+              _touchesOwnTerritory(c, r, b.player)) {
+            b.x = c.toDouble() + 0.5;
+            b.y = r.toDouble() + 0.5;
+            landed = true;
+          }
+        }
+        if (!landed) {
+          b.x = _rng.nextInt(cols).toDouble() + 0.5;
+          b.y = _rng.nextInt(rows).toDouble() + 0.5;
+        }
         b.trail.clear();
         wormholeTiles.clear();
         final bx = (b.x.round() - 1).clamp(0, cols - 2);
@@ -697,7 +793,8 @@ class GameEngine {
   }
 
   void _botSteer(BallState b) {
-    // Simple AI: aim at the nearest power-up, else the nearest enemy tile.
+    // Simple AI: aim at the nearest power-up, else the nearest BORDER
+    // tile (an enemy tile touching our own territory).
     double tx = b.x;
     double ty = b.y;
     if (powerUps.isNotEmpty) {
@@ -711,16 +808,43 @@ class GameEngine {
         }
       }
     } else {
-      // Scan for the nearest tile that is not ours.
+      // BORDER-PUSH: aim at the nearest BORDER tile — an enemy tile
+      // touching our own territory. Aiming at a deep enemy tile would
+      // paint nothing, because balls only convert at the border.
+      // Fortified tiles are excluded: the bot could never paint them.
+      var found = false;
       var best = 1e9;
       for (var r = 0; r < rows; r += 2) {
         for (var c = 0; c < cols; c += 2) {
-          if (!isPlayableTile(c, r) || grid[tileIndex(c, r)] == b.player) continue;
+          if (!isPlayableTile(c, r)) continue;
+          final owner = grid[tileIndex(c, r)];
+          if (owner < 0 || teamOf(owner) == teamOf(b.player)) continue;
+          if (fortifyUntil[owner] > time) continue;
+          if (!_touchesOwnTerritory(c, r, b.player)) continue;
           final d = (c - b.x) * (c - b.x) + (r - b.y) * (r - b.y);
           if (d < best) {
             best = d;
             tx = c.toDouble();
             ty = r.toDouble();
+            found = true;
+          }
+        }
+      }
+      if (!found) {
+        // No border tile sampled (odd-coordinate pocket, or we own
+        // nothing — mercy case): fall back to the nearest enemy tile
+        // so the bot still has a direction; the mercy rule lets it
+        // repaint from wherever it lands.
+        best = 1e9;
+        for (var r = 0; r < rows; r += 2) {
+          for (var c = 0; c < cols; c += 2) {
+            if (!isPlayableTile(c, r) || grid[tileIndex(c, r)] == b.player) continue;
+            final d = (c - b.x) * (c - b.x) + (r - b.y) * (r - b.y);
+            if (d < best) {
+              best = d;
+              tx = c.toDouble();
+              ty = r.toDouble();
+            }
           }
         }
       }
@@ -876,6 +1000,11 @@ class GameEngine {
           if (owner < 0) continue;
           if (teamOf(owner) == teamOf(t.player)) continue;
           if (fortifyUntil[owner] > time) continue;
+          // BORDER-PUSH: the turret only paints tiles at the border —
+          // otherwise it would be the last deep-painting path left.
+          // No border tile in range means no shot this tick; it
+          // retries in 0.8 s (nextShotAt already advanced above).
+          if (!_touchesOwnTerritory(c, r, t.player)) continue;
           candidates.add(Point<int>(c, r));
         }
       }

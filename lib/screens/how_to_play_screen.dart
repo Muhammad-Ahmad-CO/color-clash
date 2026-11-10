@@ -29,7 +29,7 @@ class HowToPlayScreen extends StatelessWidget {
               _Step('2', 'Steer your ball',
                   'Your ball moves on its own. Touch anywhere in your zone and drag to steer it — a joystick appears where your finger touches. 2 players: left half vs right half. 3 players: three vertical thirds. 4 players: four corners. All players can steer at the same time — use different fingers.'),
               _Step('3', 'Paint the arena',
-                  'Wherever your ball goes, the tiles change to your colour. Take tiles from other players by driving over them. The player with the most tiles at the end wins.'),
+                  'Your ball only paints where it touches your own territory — it pushes the border forward one block at a time, like the videos. Deep in enemy territory it paints nothing, so ride the border to grow. The player with the most tiles at the end wins.'),
               _Step('4', 'Grab power-ups',
                   'A power-up tile appears every 6 seconds (maximum 3 on the field). Drive over it to use it — any part of your ball touching the tile collects it. A banner with its name and what it does shows above the arena for a few seconds. Each power-up has its own colour and icon, and a coloured ring + badge on your ball shows the buff while it runs.'),
               _Step('5', 'Win in 90 seconds',
