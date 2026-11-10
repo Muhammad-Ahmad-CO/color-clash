@@ -1,12 +1,13 @@
 // Color Cover — game engine (pure logic, no widgets).
 // Grid: 18 columns x 24 rows (reference arena is 3:4). Balls move in tile
-// coordinates, bounce off walls, and push the border: a ball converts
-// a tile only where it touches its own territory (one block at a time,
-// like the reference videos). Match length:
-// 90 seconds. Modes (see Modes screen): Ultimate Meter/Tsunami, Bomb Ball,
-// Golden Tile, Sudden Death shrinking, Chaos Events, Team 2v2, Battle
-// Royale, VS COMPUTER. Flags come from MatchConfig.pack — All Chaos
-// enables 1-5.
+// coordinates at ~2.7 tiles/s (the measured video pace) and bounce off
+// walls — the enemy border IS a wall: a ball's centre never enters
+// enemy territory. Pressing the border converts the tile the ball
+// touches, one block at a time, like the reference videos. Match
+// length: 90 seconds. Modes (see Modes screen): Ultimate Meter/Tsunami,
+// Bomb Ball, Golden Tile, Sudden Death shrinking, Chaos Events, Team
+// 2v2, Battle Royale, VS COMPUTER. Flags come from MatchConfig.pack —
+// All Chaos enables 1-5.
 import 'dart:math';
 import '../data/game_data.dart';
 import 'match_theme.dart';
@@ -38,7 +39,11 @@ class BallState {
       required this.x,
       required this.y,
       required this.angle,
-      this.angleOffset = 0});
+      this.angleOffset = 0})
+      : lastValidX = x,
+        lastValidY = y,
+        teleX = x,
+        teleY = y;
   final int player;
   double x;
   double y;
@@ -61,6 +66,25 @@ class BallState {
   /// Only the two extra balls ever carry a value; the original never does.
   double removeAt = 0;
   final List<Point<double>> trail = <Point<double>>[];
+  /// WALL (reference video): last position whose centre tile was not a
+  /// wall. Persistent — only written while the centre tile is non-wall,
+  /// so a shrink, FIRE or Earthquake flip under the ball cannot poison
+  /// it, and a frozen ball shoved by collision separation keeps a valid
+  /// snapshot. Initialised to the spawn position.
+  double lastValidX;
+  double lastValidY;
+  /// Wormhole: true from the teleport until the ball's centre tile is
+  /// own again (paint converts the landing, or the ball walks out).
+  /// While true the end-of-step wall clamp exempts this ball.
+  bool teleported = false;
+  /// Pre-teleport spot + engine time of the teleport: the 5 s
+  /// last-resort yank if a landing never converts.
+  double teleX;
+  double teleY;
+  double teleportedAt = -1000;
+  /// Wall-bounce sound throttle: one counted bounce per 0.5 s per ball,
+  /// so pressing the border is one sustained bounce, not 60/s.
+  double lastWallBounceAt = -1000;
 }
 
 /// A placed TURRET: a stationary auto-painter owned by one player.
@@ -375,7 +399,10 @@ class GameEngine {
   String matchDurationLabel() => formatDuration(time);
 
   double _ballSpeed(BallState b) {
-    var s = 7.0;
+    // Base speed is the measured video pace: the reference balls run
+    // ~2.7 tiles/s (median 2.73 over the Latte vs Roast video). The old
+    // 7.0 was nearly 3x too fast. All buffs stay multipliers on it.
+    var s = 2.7;
     if (b.speedUntil > time) s *= 1.33;
     if (b.nitroUntil > time) s *= 1.8;
     if (b.infiltratorUntil > time) s *= 1.15;
@@ -493,38 +520,124 @@ class GameEngine {
     return true;
   }
 
+  /// WALL (reference video): is tile (c, r) a wall for [player]'s ball?
+  /// A wall is any tile the ball's centre may never occupy: a dead /
+  /// non-playable tile, an unowned tile, or a tile owned by another
+  /// team. Own-team tiles (fortified or not) are never walls.
+  bool _isWallTile(int c, int r, int player) {
+    if (!isPlayableTile(c, r)) return true;
+    final owner = grid[tileIndex(c, r)];
+    return owner < 0 || teamOf(owner) != teamOf(player);
+  }
+
+  /// Try to move ball [b] by [d] along one axis ([isX] true = x-axis).
+  /// The centre may only enter a tile it already occupies or a
+  /// non-wall tile: stepping into a wall tile is blocked, the angle
+  /// reflects on that axis (like the arena edge bounce below), and the
+  /// ball stays put on that axis. A zero step is a no-op, never a
+  /// bounce. Mercy disables the wall for this ball. Returns true iff
+  /// the ball moved. Steering runs before movement each frame, so the
+  /// reflection is the ball's final angle for the frame — holding the
+  /// joystick into the wall keeps it pressing, and the y-step still
+  /// slides it along the border.
+  bool _tryMoveAxis(BallState b, double d, bool isX, bool mercy) {
+    if (d == 0) return true;
+    final nx = isX ? b.x + d : b.x;
+    final ny = isX ? b.y : b.y + d;
+    final nc = nx.floor();
+    final nr = ny.floor();
+    if (!mercy &&
+        (nc != b.x.floor() || nr != b.y.floor()) &&
+        _isWallTile(nc, nr, b.player)) {
+      if (isX) {
+        b.angle = pi - b.angle;
+      } else {
+        b.angle = -b.angle;
+      }
+      // One counted bounce per 0.5 s per ball: a head-on press is one
+      // sustained bounce, not 60/s (the screen already throttles the
+      // sound to 80 ms, this keeps the counter itself sane).
+      if (time - b.lastWallBounceAt > 0.5) {
+        b.lastWallBounceAt = time;
+        bounceCount++;
+      }
+      return false;
+    }
+    b.x = nx;
+    b.y = ny;
+    return true;
+  }
+
   void _paintAround(BallState b) {
     final radius = _paintRadius(b);
-    final cc = b.x.round();
-    final rr = b.y.round();
+    // The tile the centre stands on (floor, not round — the wall
+    // keeps the centre on own tiles, so round() would be a tile the
+    // ball may never occupy).
+    final fc = b.x.floor();
+    final fr = b.y.floor();
     // Candidates are tested against the grid as it stands when this
     // call starts (two-pass): a tile converted by this same call must
     // not unlock its neighbour in the same frame — the border advances
     // one block at a time, never in a chain.
     final mercy = _mercyApplies(b.player);
-    // INFILTRATOR is the one ball-painting bypass: its fantasy is
-    // painting deep behind enemy lines (10 s, earned by pickup).
+    // SEED: a ball may (re)paint its own floor tile when it has no
+    // territory at all (mercy) or when it just wormhole-teleported
+    // onto a border tile — the landing converts on the first paint
+    // after the teleport (or after unfreezing), which is what clears
+    // the teleported flag. Without this, a teleported ball sits in
+    // the middle of its landing tile, its disc reaching no neighbour,
+    // and can neither convert it nor move.
+    final seed = mercy || b.teleported;
+    // INFILTRATOR is the one ball-painting bypass: the ball stays
+    // on its own side of the wall, but its paint reaches across the
+    // border in a radius-2 disc for 10 s (earned by pickup).
     final infiltrator = b.infiltratorUntil > time;
     final candidates = <int>[];
-    for (var dr = -radius; dr <= radius; dr++) {
-      for (var dc = -radius; dc <= radius; dc++) {
-        // Base painting is the centre tile only. Buff radii (Wrecking
-        // Ball / Colossus / double paint) widen the candidate disc.
-        if (radius == 1 && (dc != 0 || dr != 0)) continue;
-        if (dc * dc + dr * dr > radius * radius + 1) continue;
-        final c = cc + dc;
-        final r = rr + dr;
-        if (!isPlayableTile(c, r)) continue;
-        final idx = tileIndex(c, r);
-        final owner = grid[idx];
-        if (owner == b.player) continue;
-        if (owner >= 0 && fortifyUntil[owner] > time) continue;
-        // Mercy exempts only the centre tile: the seed is one tile,
-        // and it regrows outward one block at a time from there.
-        if (!infiltrator &&
-            !(mercy && dc == 0 && dr == 0) &&
-            !_touchesOwnTerritory(c, r, b.player)) continue;
-        candidates.add(idx);
+    if (radius == 1) {
+      // BASE (wall rule): exactly ONE tile per frame — the tile the
+      // ball is pressing most directly (the edge-neighbour of the
+      // floor tile most aligned with the ball's velocity), and only
+      // if the disc actually overlaps it. That is the video's
+      // one-block-at-a-time push. Overlap alone would paint up to 4
+      // tiles at a corner (a 2-wide swath, and a bot converting ~5
+      // tiles/s); round() alone could paint a diagonal tile the disc
+      // never reached, or miss the tile it does touch; floor() alone
+      // could never paint at all, because the wall keeps the centre
+      // on own tiles.
+      final vx = cos(b.angle);
+      final vy = sin(b.angle);
+      var bestDot = 0.0;
+      var bestC = fc;
+      var bestR = fr;
+      const dirs = [
+        Point<int>(1, 0),
+        Point<int>(-1, 0),
+        Point<int>(0, 1),
+        Point<int>(0, -1),
+      ];
+      for (final d in dirs) {
+        final dot = d.x * vx + d.y * vy;
+        if (dot <= bestDot) continue;
+        final c = fc + d.x;
+        final r = fr + d.y;
+        if (!_ballOverlapsTile(b, c, r)) continue;
+        bestDot = dot;
+        bestC = c;
+        bestR = r;
+      }
+      if (bestDot > 0) {
+        _maybePaint(bestC, bestR, b, seed, infiltrator, candidates);
+      }
+      // Seed: the floor tile itself (the ball's centre tile).
+      if (seed) _maybePaint(fc, fr, b, seed, infiltrator, candidates);
+    } else {
+      // Buff radii (Wrecking Ball / Colossus / double paint): the
+      // radius-2 disc around the floor tile, as before.
+      for (var dr = -radius; dr <= radius; dr++) {
+        for (var dc = -radius; dc <= radius; dc++) {
+          if (dc * dc + dr * dr > radius * radius + 1) continue;
+          _maybePaint(fc + dc, fr + dr, b, seed, infiltrator, candidates);
+        }
       }
     }
     for (final idx in candidates) {
@@ -533,6 +646,24 @@ class GameEngine {
             (ultimateMeters[b.player] + (b.doublePaintUntil > time ? 6 : 3)).clamp(0, 100);
       }
     }
+  }
+
+  /// One paint candidate: playable, not already own, not fortified,
+  /// and (unless Infiltrator, or the seed) touching own territory.
+  /// The seed exempts only the floor tile: a mercy seed is one tile,
+  /// and a wormhole landing is one tile — both regrow outward one
+  /// block at a time from there.
+  void _maybePaint(int c, int r, BallState b, bool seed,
+      bool infiltrator, List<int> candidates) {
+    if (!isPlayableTile(c, r)) return;
+    final idx = tileIndex(c, r);
+    final owner = grid[idx];
+    if (owner == b.player) return;
+    if (owner >= 0 && fortifyUntil[owner] > time) return;
+    if (!infiltrator &&
+        !(seed && c == b.x.floor() && r == b.y.floor()) &&
+        !_touchesOwnTerritory(c, r, b.player)) return;
+    candidates.add(idx);
   }
 
   /// Color Tsunami: convert the ball's full row to this player's colour.
@@ -592,6 +723,19 @@ class GameEngine {
         _setTile(idx, b.player);
       }
     }
+  }
+
+  /// Wormhole landing test: a border tile (own territory, or an enemy
+  /// tile touching own territory) that is playable, not a turret tile
+  /// and not fortified — the ball must be able to convert it, or the
+  /// wall rule would strand it there.
+  bool _wormholeLanding(int c, int r, BallState b) {
+    if (!isPlayableTile(c, r)) return false;
+    if (_isTurretTile(c, r)) return false;
+    final owner = grid[tileIndex(c, r)];
+    if (owner >= 0 && fortifyUntil[owner] > time) return false;
+    return (owner >= 0 && teamOf(owner) == teamOf(b.player)) ||
+        _touchesOwnTerritory(c, r, b.player);
   }
 
   void _applyPowerUp(BallState b, PowerUpDef def) {
@@ -668,6 +812,16 @@ class GameEngine {
           extra.infiltratorUntil = b.infiltratorUntil;
           extra.doublePaintUntil = b.doublePaintUntil;
           extra.magnetUntil = b.magnetUntil;
+          // WALL: extras spawn on the collector — if the collector
+          // was just wormhole-teleported onto a border tile, the
+          // extras inherit the teleport state and the pre-teleport
+          // spot, so the wall clamp never yanks them to (0, 0).
+          extra.teleported = b.teleported;
+          extra.teleX = b.teleX;
+          extra.teleY = b.teleY;
+          extra.teleportedAt = b.teleportedAt;
+          extra.lastValidX = b.lastValidX;
+          extra.lastValidY = b.lastValidY;
           balls.add(extra);
         }
         break;
@@ -711,25 +865,50 @@ class GameEngine {
         // The landing is on a border tile (own territory or adjacent
         // to it) so the ball can keep painting right away — a deep
         // random landing would strand it under the border-push rule.
-        // No border tile sampled (owns nothing): random landing — the
-        // mercy rule lets the ball repaint from wherever it lands.
+        // Fortified and turret tiles are excluded: the ball could
+        // never convert them, so landing there would strand it under
+        // the wall rule. No border tile found (owns nothing): fall
+        // back to any playable tile (mercy covers the owns-nothing
+        // case) — never an unchecked random tile, which could be a
+        // maze wall or a shrunk ring.
+        b.teleX = b.x;
+        b.teleY = b.y;
+        b.teleportedAt = time;
         var landed = false;
         for (var tries = 0; tries < 24 && !landed; tries++) {
           final c = _rng.nextInt(cols);
           final r = _rng.nextInt(rows);
-          if (!isPlayableTile(c, r)) continue;
-          final owner = grid[tileIndex(c, r)];
-          if ((owner >= 0 && teamOf(owner) == teamOf(b.player)) ||
-              _touchesOwnTerritory(c, r, b.player)) {
+          if (!_wormholeLanding(c, r, b)) continue;
+          b.x = c.toDouble() + 0.5;
+          b.y = r.toDouble() + 0.5;
+          landed = true;
+        }
+        if (!landed) {
+          // Deterministic scan: a border tile exists whenever the
+          // team owns tiles — 24 random tries can miss a 1-tile
+          // border.
+          for (var r = 0; r < rows && !landed; r++) {
+            for (var c = 0; c < cols && !landed; c++) {
+              if (!_wormholeLanding(c, r, b)) continue;
+              b.x = c.toDouble() + 0.5;
+              b.y = r.toDouble() + 0.5;
+              landed = true;
+            }
+          }
+        }
+        if (!landed) {
+          for (var tries = 0; tries < 24 && !landed; tries++) {
+            final c = _rng.nextInt(cols);
+            final r = _rng.nextInt(rows);
+            if (!isPlayableTile(c, r) || _isTurretTile(c, r)) continue;
+            final owner = grid[tileIndex(c, r)];
+            if (owner >= 0 && fortifyUntil[owner] > time) continue;
             b.x = c.toDouble() + 0.5;
             b.y = r.toDouble() + 0.5;
             landed = true;
           }
         }
-        if (!landed) {
-          b.x = _rng.nextInt(cols).toDouble() + 0.5;
-          b.y = _rng.nextInt(rows).toDouble() + 0.5;
-        }
+        b.teleported = true;
         b.trail.clear();
         wormholeTiles.clear();
         final bx = (b.x.round() - 1).clamp(0, cols - 2);
@@ -742,6 +921,23 @@ class GameEngine {
         wormholeUntil = time + 3;
         break;
     }
+  }
+
+  /// Does tile (c, r) have at least one playable 4-neighbour? A
+  /// power-up on a tile with none (a Maze singleton whose neighbours
+  /// are all walls) could never be reached under the wall rule — the
+  /// ball's centre can only arrive through a playable neighbour.
+  bool _hasPlayableNeighbour(int c, int r) {
+    const dirs = [
+      Point<int>(1, 0),
+      Point<int>(-1, 0),
+      Point<int>(0, 1),
+      Point<int>(0, -1),
+    ];
+    for (final d in dirs) {
+      if (isPlayableTile(c + d.x, r + d.y)) return true;
+    }
+    return false;
   }
 
   void _spawnPowerUp() {
@@ -761,11 +957,14 @@ class GameEngine {
     for (var tries = 0; tries < 12; tries++) {
       if (isPlayableTile(c, r) &&
           !_isTurretTile(c, r) &&
+          _hasPlayableNeighbour(c, r) &&
           !powerUps.any((p) => p.col == c && p.row == r)) break;
       c = _rng.nextInt(cols);
       r = _rng.nextInt(rows);
     }
-    if (!isPlayableTile(c, r) || _isTurretTile(c, r)) return;
+    if (!isPlayableTile(c, r) ||
+        _isTurretTile(c, r) ||
+        !_hasPlayableNeighbour(c, r)) return;
     powerUps.add(PowerUpOnField(c, r, def, mystery: mystery));
   }
 
@@ -792,6 +991,18 @@ class GameEngine {
     }
   }
 
+  /// Shortest signed angle from [from] to [to], in (-pi, pi]. The bot
+  /// and ice steering lerp toward a target angle every frame; without
+  /// wrapping, a target just across the +/-pi branch cut (e.g. from
+  /// +3.1 to -3.1 — the SAME direction, due west) makes the lerp spin
+  /// the long way around through east, and the bot flies away from the
+  /// border forever instead of turning toward it.
+  double _angleDelta(double from, double to) {
+    var d = (to - from) % (2 * pi);
+    if (d > pi) d -= 2 * pi;
+    return d;
+  }
+
   void _botSteer(BallState b) {
     // Simple AI: aim at the nearest power-up, else the nearest BORDER
     // tile (an enemy tile touching our own territory).
@@ -800,11 +1011,15 @@ class GameEngine {
     if (powerUps.isNotEmpty) {
       var best = 1e9;
       for (final p in powerUps) {
-        final d = (p.col - b.x) * (p.col - b.x) + (p.row - b.y) * (p.row - b.y);
+        // Aim at the tile CENTRE, not its corner: the ball presses
+        // the middle of the tile it wants (wall rule — a corner aim
+        // slides it along the border instead of into the tile).
+        final d = (p.col + 0.5 - b.x) * (p.col + 0.5 - b.x) +
+            (p.row + 0.5 - b.y) * (p.row + 0.5 - b.y);
         if (d < best) {
           best = d;
-          tx = p.col.toDouble();
-          ty = p.row.toDouble();
+          tx = p.col + 0.5;
+          ty = p.row + 0.5;
         }
       }
     } else {
@@ -814,36 +1029,41 @@ class GameEngine {
       // Fortified tiles are excluded: the bot could never paint them.
       var found = false;
       var best = 1e9;
-      for (var r = 0; r < rows; r += 2) {
-        for (var c = 0; c < cols; c += 2) {
+      for (var r = 0; r < rows; r++) {
+        for (var c = 0; c < cols; c++) {
           if (!isPlayableTile(c, r)) continue;
           final owner = grid[tileIndex(c, r)];
           if (owner < 0 || teamOf(owner) == teamOf(b.player)) continue;
           if (fortifyUntil[owner] > time) continue;
           if (!_touchesOwnTerritory(c, r, b.player)) continue;
-          final d = (c - b.x) * (c - b.x) + (r - b.y) * (r - b.y);
+          final d = (c + 0.5 - b.x) * (c + 0.5 - b.x) +
+              (r + 0.5 - b.y) * (r + 0.5 - b.y);
           if (d < best) {
             best = d;
-            tx = c.toDouble();
-            ty = r.toDouble();
+            tx = c + 0.5;
+            ty = r + 0.5;
             found = true;
           }
         }
       }
       if (!found) {
-        // No border tile sampled (odd-coordinate pocket, or we own
-        // nothing — mercy case): fall back to the nearest enemy tile
-        // so the bot still has a direction; the mercy rule lets it
-        // repaint from wherever it lands.
+        // No border tile sampled (owns nothing — mercy case): fall
+        // back to the nearest enemy tile so the bot still has a
+        // direction; the mercy rule lets it repaint from wherever it
+        // lands. Fortified tiles are excluded here too — pressing a
+        // fortified border forever would stall the bot.
         best = 1e9;
-        for (var r = 0; r < rows; r += 2) {
-          for (var c = 0; c < cols; c += 2) {
+        for (var r = 0; r < rows; r++) {
+          for (var c = 0; c < cols; c++) {
             if (!isPlayableTile(c, r) || grid[tileIndex(c, r)] == b.player) continue;
-            final d = (c - b.x) * (c - b.x) + (r - b.y) * (r - b.y);
+            final owner = grid[tileIndex(c, r)];
+            if (owner >= 0 && fortifyUntil[owner] > time) continue;
+            final d = (c + 0.5 - b.x) * (c + 0.5 - b.x) +
+                (r + 0.5 - b.y) * (r + 0.5 - b.y);
             if (d < best) {
               best = d;
-              tx = c.toDouble();
-              ty = r.toDouble();
+              tx = c + 0.5;
+              ty = r + 0.5;
             }
           }
         }
@@ -858,21 +1078,38 @@ class GameEngine {
       // the TARGET, never the angle — a per-ball kick to b.angle would
       // erase the TRINITY spread.
       if (_rng.nextDouble() < 0.01) target += _rng.nextDouble() - 0.5;
-      b.angle += (target - b.angle) * 0.05;
+      b.angle += _angleDelta(b.angle, target) * 0.05;
     } else if (config.botDifficulty == BotDifficulty.crazy) {
       b.angle = target;
     } else {
-      b.angle += (target - b.angle) * 0.2;
+      b.angle += _angleDelta(b.angle, target) * 0.2;
     }
   }
 
   void step(double dt) {
     if (finished) return;
+    // A hitch must never let one step jump a whole tile (tunnelling
+    // through the border): cap dt at 1/30 s — at max speed the step
+    // stays under half a tile.
+    if (dt > 1 / 30) dt = 1 / 30;
     time += dt;
     timeLeft = (matchSeconds - time).clamp(0, matchSeconds.toDouble());
     if (timeLeft <= 0) {
       finished = true;
       return;
+    }
+
+    // WALL: a wormhole-teleported ball stops being exempt once its
+    // centre tile is own again (paint converted the landing, or the
+    // ball walked out) — or while mercy applies (no walls at all).
+    // Not cleared on a timer: a frozen teleported ball keeps the flag
+    // until its centre is own.
+    for (final b in balls) {
+      if (b.teleported &&
+          (_mercyApplies(b.player) ||
+              !_isWallTile(b.x.floor(), b.y.floor(), b.player))) {
+        b.teleported = false;
+      }
     }
 
     // Drop expired banners (and expired wormhole marks).
@@ -888,6 +1125,9 @@ class GameEngine {
       shrinkLevel = ((10 - timeLeft) / 3).ceil().clamp(0, 3);
       // A turret whose tile shrank into the dead ring is destroyed.
       turrets.removeWhere((t) => !isPlayableTile(t.col, t.row));
+      // A power-up on a shrunk tile could never be reached under the
+      // wall rule and would occupy one of the max-3 slots forever.
+      powerUps.removeWhere((p) => !isPlayableTile(p.col, p.row));
     }
 
     // Chaos Events every 20 seconds.
@@ -976,6 +1216,9 @@ class GameEngine {
           if (dy != 0) p.row += dy.sign;
         }
       }
+      // The drift has no playable check: a power-up dragged onto a
+      // dead tile could never be reached under the wall rule.
+      powerUps.removeWhere((p) => !isPlayableTile(p.col, p.row));
     }
 
     // TURRET: every 0.8 s each live turret fires at a random enemy tile
@@ -1039,9 +1282,22 @@ class GameEngine {
     for (final b in List<BallState>.from(balls)) {
       if (isVsBot && b.player == 1) _botSteer(b);
 
+      // WALL: remember the last position whose centre tile was not a
+      // wall. Persistent — only written while non-wall — so a shrink,
+      // FIRE or Earthquake flip under the ball cannot poison it.
+      // Recorded before the freeze skip: a frozen ball is still moved
+      // by collision separation, so it needs a valid snapshot too.
+      if (!_isWallTile(b.x.floor(), b.y.floor(), b.player)) {
+        b.lastValidX = b.x;
+        b.lastValidY = b.y;
+      }
+
       // FREEZE: a frozen ball does not move, paint or pick up anything.
       if (frozenUntil[b.player] > time) continue;
 
+      // Pre-pull spot, for the wall check below.
+      final prePullX = b.x;
+      final prePullY = b.y;
       for (final other in balls) {
         if (other == b) continue;
         if (other.blackHoleUntil > time) {
@@ -1049,10 +1305,29 @@ class GameEngine {
           final dy = other.y - b.y;
           final d = sqrt(dx * dx + dy * dy);
           if (d > 0.6) {
-            b.x += dx / d * 2.0 * dt;
-            b.y += dy / d * 2.0 * dt;
+            // Black-hole pull scales with the victim's own speed
+            // (0.5x — the victim can always escape). The old absolute
+            // 2.0 would be 74% of the new 2.7 base speed and would
+            // drag balls into the wall.
+            final pull = 0.5 * _ballSpeed(b);
+            b.x += dx / d * pull * dt;
+            b.y += dy / d * pull * dt;
           }
         }
+      }
+      // WALL: the pull must not drag the ball across the border —
+      // restore the pre-pull position before _paintAround runs, so
+      // the pull can never paint its way through the wall. Restoring
+      // to lastValid instead would yank a wormhole-teleported ball
+      // back to its pre-teleport spot before paint can convert the
+      // landing — the pre-pull spot is the landing itself, so the
+      // restore is a no-op for it.
+      final mercy = _mercyApplies(b.player);
+      if (!mercy &&
+          _isWallTile(b.x.floor(), b.y.floor(), b.player) &&
+          (b.x != prePullX || b.y != prePullY)) {
+        b.x = prePullX;
+        b.y = prePullY;
       }
 
       final steer = steering[b.player];
@@ -1061,16 +1336,21 @@ class GameEngine {
         // direction, so the three balls fan out instead of clustering.
         final target = atan2(steer.y, steer.x) + b.angleOffset;
         if (iceUntil > time) {
-          // Slippery ice: turn slowly.
-          b.angle += (target - b.angle) * 0.12;
+          // Slippery ice: turn slowly (wrapped — see _angleDelta, or
+          // a westward turn spins the long way around through east).
+          b.angle += _angleDelta(b.angle, target) * 0.12;
         } else {
           b.angle = target;
         }
       }
 
       final speed = _ballSpeed(b);
-      b.x += cos(b.angle) * speed * dt;
-      b.y += sin(b.angle) * speed * dt;
+      // WALL (reference video): axis-separated movement — the centre
+      // may only occupy own-team tiles; the border is a wall the ball
+      // bounces off while converting the tile it presses (see
+      // _tryMoveAxis and _paintAround). Mercy turns the walls off.
+      _tryMoveAxis(b, cos(b.angle) * speed * dt, true, mercy);
+      _tryMoveAxis(b, sin(b.angle) * speed * dt, false, mercy);
 
       final rad = _ballRadius(b);
       final minX = (suddenDeathEnabled ? shrinkLevel : 0) + rad;
@@ -1207,6 +1487,58 @@ class GameEngine {
         final ncy = vcy + vn * ny;
         if (sqrt(nax * nax + nay * nay) > 0.5) a.angle = atan2(nay, nax);
         if (sqrt(ncx * ncx + ncy * ncy) > 0.5) c.angle = atan2(ncy, ncx);
+      }
+    }
+
+    // WALL CLAMP: black-hole pull, collision separation, shrink, FIRE
+    // and Earthquake can still leave a ball's centre on a wall tile.
+    // Push it back to its last non-wall position and point it back
+    // the way it came. Teleported balls are exempt while their
+    // landing is unconverted (paint or walking out heals it); only
+    // after 5 s does the last-resort yank to the pre-teleport spot
+    // fire. Mercy balls have no walls at all.
+    for (final b in balls) {
+      if (_mercyApplies(b.player)) continue;
+      final cc = b.x.floor();
+      final cr = b.y.floor();
+      if (!_isWallTile(cc, cr, b.player)) continue;
+      if (b.teleported) {
+        if (time - b.teleportedAt >= 5.0) {
+          b.x = b.teleX;
+          b.y = b.teleY;
+          b.teleported = false;
+        }
+        continue;
+      }
+      // The last valid spot itself may have become a wall (shrink /
+      // FIRE flipped it under a standing ball): then pop to the
+      // nearest non-wall tile centre instead (expanding ring, max 3
+      // — the ball's team always owns tiles within reach, or mercy
+      // applies and this loop is skipped).
+      if (!_isWallTile(
+          b.lastValidX.floor(), b.lastValidY.floor(), b.player)) {
+        final wx = b.x;
+        final wy = b.y;
+        b.x = b.lastValidX;
+        b.y = b.lastValidY;
+        final dx = b.lastValidX - wx;
+        final dy = b.lastValidY - wy;
+        if (dx * dx + dy * dy > 0.0001) b.angle = atan2(dy, dx);
+      } else {
+        var placed = false;
+        for (var ring = 1; ring <= 3 && !placed; ring++) {
+          for (var dr = -ring; dr <= ring && !placed; dr++) {
+            for (var dc = -ring; dc <= ring && !placed; dc++) {
+              if (dc.abs() != ring && dr.abs() != ring) continue;
+              final tc = cc + dc;
+              final tr = cr + dr;
+              if (_isWallTile(tc, tr, b.player)) continue;
+              b.x = tc + 0.5;
+              b.y = tr + 0.5;
+              placed = true;
+            }
+          }
+        }
       }
     }
 

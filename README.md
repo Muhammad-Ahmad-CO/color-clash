@@ -7,7 +7,7 @@ A 2, 3 or 4 player territory battle on one phone. Paint the arena, steal the til
 1. **Pick a mode** — On Home, tap **MODES** (10 cards) or tap **PLAY** for the default mode.
 2. **Setup** — Choose 2, 3 or 4 players. Each player picks a name, a colour (62 colours, no two players the same — 2 rare colours are locked until earned) and a ball shape (30 shapes). Pick an arena shape too: Rectangle, Heart, Star, Maze, Circle or Random. For 2 players you can also pick a series: Single, Best of 3 or Best of 5.
 3. **Steer your ball** — Your ball moves on its own. Touch anywhere in your zone and drag to steer it. 2 players: left half vs right half. 3 players: three vertical thirds. 4 players: four corners. All players steer at the same time with different fingers.
-4. **Paint the arena** — Your ball paints only where it touches your own territory, pushing the border forward one block at a time. Deep in enemy territory it paints nothing — ride the border to grow.
+4. **Paint the arena** — Your ball can never cross into enemy territory: the border is a wall it bounces off. Press against it to convert the tile it touches, one block at a time, like the videos.
 5. **Grab power-ups** — A power-up tile appears every 6 seconds (max 3 on the field). Drive over it to use it. A banner with its name shows above the arena for a few seconds.
 6. **Win in 90 seconds** — Most tiles wins. The end card shows "X DOMINATES!" right on the arena.
 

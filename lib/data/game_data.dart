@@ -274,7 +274,7 @@ const List<PowerUpDef> kPowerUps = [
   PowerUpDef('wrecking', 'WRECKING BALL', 'Paints a bigger area (radius 2) for 10 seconds.', 'W', 0xFFE6193C, 'Paints a bigger area — 10s'),
   PowerUpDef('colossus', 'COLOSSUS', 'Your ball grows huge and paints radius 2 for 10 seconds.', 'C', 0xFF8E24AA, 'Giant ball, paints radius 2 — 10s'),
   PowerUpDef('fortify', 'FORTIFY +10 SECONDS', 'Your tiles cannot be taken for 10 seconds.', 'F', 0xFF43A047, 'Your tiles can\'t be taken — 10s'),
-  PowerUpDef('infiltrator', 'INFILTRATOR +10 SECONDS', 'Paints ANY enemy tiles, radius 2 — even deep behind enemy lines, for 10 seconds.', 'I', 0xFFFF8F00, 'Paints anywhere, radius 2 — 10s'),
+  PowerUpDef('infiltrator', 'INFILTRATOR +10 SECONDS', 'Paints enemy tiles within 2 tiles of your ball — reach across the border without crossing it, for 10 seconds.', 'I', 0xFFFF8F00, 'Paints across the border, radius 2 — 10s'),
   PowerUpDef('ghost', 'GHOST', 'Pass straight through enemy balls for 8 seconds.', 'G', 0xFFB0BEC5, 'Pass through enemy balls — 8s'),
   PowerUpDef('blackhole', 'BLACK HOLE', 'Pulls enemy balls towards you for 5 seconds.', 'B', 0xFF212121, 'Pulls enemy balls to you — 5s'),
   PowerUpDef('tidal', 'TIDAL WAVE', 'Instantly paints your full row and column.', 'T', 0xFF00BCD4, 'Paints your whole row + column'),
