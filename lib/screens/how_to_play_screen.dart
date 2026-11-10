@@ -1,6 +1,6 @@
-// Color Cover — How to Play (Dot Clash chrome, v3b, simple English).
-// Light grey page, orange rounded step numbers, near-black titles,
-// muted body text, off-white power-up rows. Back only — no bottom nav.
+// Color Cover — How to Play (Tiny Clash chrome, v3.5, simple English).
+// Dark-navy page, blue gradient step numbers, white titles,
+// muted body text, navy power-up rows. Back only — no bottom nav.
 import 'package:flutter/material.dart';
 import '../data/game_data.dart';
 import '../game/match_theme.dart';

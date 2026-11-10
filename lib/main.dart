@@ -34,36 +34,48 @@ class ColorCoverApp extends StatelessWidget {
       title: 'Color Cover',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        brightness: Brightness.light,
+        brightness: Brightness.dark,
         scaffoldBackgroundColor: DcColors.page,
-        colorScheme: const ColorScheme.light(
-          primary: DcColors.orange,
-          secondary: Color(0xFFFD6EA3),
+        colorScheme: const ColorScheme.dark(
+          primary: DcColors.blue,
+          secondary: DcColors.gold,
+          surface: DcColors.panel,
         ),
         appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.white,
-          foregroundColor: DcColors.text,
+          backgroundColor: DcColors.bar,
+          foregroundColor: Colors.white,
           elevation: 0,
           centerTitle: false,
           titleTextStyle: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w900,
-              color: DcColors.text),
+              color: Colors.white),
+        ),
+        dialogTheme: const DialogTheme(
+          backgroundColor: DcColors.panel,
+          titleTextStyle: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              color: Colors.white),
+          contentTextStyle: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: Colors.white),
         ),
         useMaterial3: true,
         textTheme: const TextTheme(
           headlineLarge: TextStyle(
               fontWeight: FontWeight.w900,
               letterSpacing: 1,
-              color: DcColors.text),
+              color: Colors.white),
           titleLarge: TextStyle(
-              fontWeight: FontWeight.w800, color: DcColors.text),
-          bodyLarge: TextStyle(fontSize: 17, color: DcColors.text),
-          bodyMedium: TextStyle(fontSize: 16, color: DcColors.text),
+              fontWeight: FontWeight.w800, color: Colors.white),
+          bodyLarge: TextStyle(fontSize: 17, color: Colors.white),
+          bodyMedium: TextStyle(fontSize: 16, color: Colors.white),
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
-            backgroundColor: DcColors.orange,
+            backgroundColor: DcColors.blue,
             foregroundColor: Colors.white,
             padding:
                 const EdgeInsets.symmetric(horizontal: 28, vertical: 16),

@@ -1,6 +1,6 @@
-// Color Cover — Coins + Shop (Dot Clash chrome, v3b).
-// Light grey page, off-white cards, near-black text, orange pill
-// BUY/EQUIP buttons, white pill secondary. Win a match = 50 coins,
+// Color Cover — Coins + Shop (Tiny Clash chrome, v3.5).
+// Dark-navy page, navy cards, white text, gold coin balance, blue
+// gradient BUY/EQUIP buttons. Win a match = 50 coins,
 // finish a match = 10 coins. Coins are stored on the phone. Shop sells
 // ball trails: Glow, Fire, Rainbow, Golden. Bottom nav (Shop active).
 import 'package:flutter/material.dart';
@@ -58,7 +58,7 @@ class _ShopScreenState extends State<ShopScreen> {
                               style: TextStyle(
                                   fontSize: 24,
                                   fontWeight: FontWeight.w900,
-                                  color: DcColors.text)),
+                                  color: DcColors.ink)),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -119,8 +119,8 @@ class _ShopScreenState extends State<ShopScreen> {
                                       style: TextStyle(
                                           fontWeight: FontWeight.w800,
                                           color: owned
-                                              ? Colors.green.shade700
-                                              : DcColors.orangeDark)),
+                                              ? DcColors.green
+                                              : DcColors.gold)),
                                 ],
                               ),
                             ),
@@ -154,9 +154,11 @@ class _ShopScreenState extends State<ShopScreen> {
                                 },
                                 style: TextButton.styleFrom(
                                     backgroundColor: equipped
-                                        ? DcColors.text
-                                        : DcColors.orange,
-                                    foregroundColor: Colors.white,
+                                        ? DcColors.gold
+                                        : DcColors.blue,
+                                    foregroundColor: equipped
+                                        ? DcColors.ink
+                                        : Colors.white,
                                     shape: const StadiumBorder(),
                                     textStyle: const TextStyle(
                                         fontSize: 15,

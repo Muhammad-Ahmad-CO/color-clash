@@ -1,7 +1,6 @@
-// Color Cover — Setup screen (v3 redesign).
-// The v2 screen was a plain scrolling column of small chips and buttons
-// and the user called its interface very bad (03:51 PKT). This version is
-// built like the game itself: flat bright colours, sharp corners, heavy
+// Color Cover — Setup screen (Tiny Clash chrome, v3.5).
+// Dark-navy menu: big tappable cards, blue-gradient selections, gold
+// accents. Built like the game itself: flat bright colours, heavy
 // grotesque caps type, BIG tappable cards everywhere.
 //  - Each player's tab is a big card filled with THEIR colour (live preview).
 //  - Colour picker = big tiles with the colour NAME printed on them (62,
@@ -228,7 +227,7 @@ class _SetupScreenState extends State<SetupScreen> {
                             borderSide: BorderSide(
                                 color: DcColors.orange, width: 2)),
                         filled: true,
-                        fillColor: Colors.white,
+                        fillColor: DcColors.bar,
                       ),
                       onChanged: (v) => setState(() => current.name =
                           v.trim().isEmpty ? 'Player ${_editing + 1}' : v.trim()),
@@ -251,26 +250,15 @@ class _SetupScreenState extends State<SetupScreen> {
             Container(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
               decoration: const BoxDecoration(
-                color: Colors.white,
+                color: DcColors.bar,
                 border:
                     Border(top: BorderSide(color: DcColors.border)),
               ),
-              child: SizedBox(
-                width: double.infinity,
+              child: DcPillButton(
+                label: 'START BATTLE',
                 height: 72,
-                child: TextButton(
-                  onPressed: _startBattle,
-                  style: TextButton.styleFrom(
-                    backgroundColor: DcColors.orange,
-                    foregroundColor: Colors.white,
-                    shape: const StadiumBorder(),
-                    textStyle: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1),
-                  ),
-                  child: const Text('START BATTLE'),
-                ),
+                fontSize: 26,
+                onPressed: _startBattle,
               ),
             ),
           ],
@@ -348,7 +336,7 @@ class _SetupScreenState extends State<SetupScreen> {
   }
 
   /// VS COMPUTER header: big off-white card with an orange border +
-  /// 3 big difficulty pills (selected = orange, per Dot Clash).
+  /// 3 big difficulty pills (selected = blue gradient, per Tiny Clash).
   /// Bot ladder: Easy is always open; Medium unlocks by beating Easy,
   /// Crazy by beating Medium. Locked pills are dimmed with a lock and
   /// explain how to unlock them.
@@ -388,52 +376,33 @@ class _SetupScreenState extends State<SetupScreen> {
               return Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(right: 8),
-                  child: SizedBox(
+                  child: DcPillButton(
+                    label: label,
                     height: 64,
-                    child: TextButton(
-                      onPressed: () {
-                        if (locked) {
-                          final need = d == BotDifficulty.medium
-                              ? 'Easy'
-                              : 'Medium';
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                                content: Text(
-                                    '${botDifficultyName(d)} is locked. Beat $need first!')),
-                          );
-                          return;
-                        }
-                        setState(() => _botDifficulty = d);
-                      },
-                      style: TextButton.styleFrom(
-                        backgroundColor: locked
-                            ? const Color(0xFFE5E7EB)
-                            : (selected ? DcColors.orange : Colors.white),
-                        foregroundColor: locked
-                            ? DcColors.muted
-                            : (selected ? Colors.white : DcColors.text),
-                        side: selected && !locked
-                            ? BorderSide.none
-                            : const BorderSide(
-                                color: DcColors.border, width: 1.5),
-                        shape: const StadiumBorder(),
-                        textStyle: const TextStyle(
-                            fontSize: 20, fontWeight: FontWeight.w900),
-                      ),
-                      child: locked
-                          ? Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.lock, size: 18),
-                                const SizedBox(width: 4),
-                                Flexible(
-                                  child: Text(label,
-                                      overflow: TextOverflow.ellipsis),
-                                ),
-                              ],
-                            )
-                          : Text(label),
-                    ),
+                    fontSize: 20,
+                    icon: locked ? Icons.lock : null,
+                    color: locked
+                        ? DcColors.bar
+                        : (selected ? null : DcColors.panel),
+                    foreground:
+                        locked ? DcColors.muted : Colors.white,
+                    borderColor: locked
+                        ? null
+                        : (selected ? null : DcColors.border),
+                    onPressed: () {
+                      if (locked) {
+                        final need = d == BotDifficulty.medium
+                            ? 'Easy'
+                            : 'Medium';
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                              content: Text(
+                                  '${botDifficultyName(d)} is locked. Beat $need first!')),
+                        );
+                        return;
+                      }
+                      setState(() => _botDifficulty = d);
+                    },
                   ),
                 ),
               );
@@ -474,28 +443,16 @@ class _SetupScreenState extends State<SetupScreen> {
         return Expanded(
           child: Padding(
             padding: const EdgeInsets.only(right: 8),
-            child: SizedBox(
+            child: DcPillButton(
+              label: o.$2,
               height: 56,
-              child: TextButton(
-                onPressed: () {
-                  setState(() => _seriesWinsNeeded = o.$1);
-                  SoundFx.click();
-                },
-                style: TextButton.styleFrom(
-                  backgroundColor:
-                      selected ? DcColors.orange : Colors.white,
-                  foregroundColor:
-                      selected ? Colors.white : DcColors.text,
-                  side: selected
-                      ? BorderSide.none
-                      : const BorderSide(
-                          color: DcColors.border, width: 1.5),
-                  shape: const StadiumBorder(),
-                  textStyle: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w900),
-                ),
-                child: Text(o.$2),
-              ),
+              fontSize: 16,
+              color: selected ? null : DcColors.panel,
+              borderColor: selected ? null : DcColors.border,
+              onPressed: () {
+                setState(() => _seriesWinsNeeded = o.$1);
+                SoundFx.click();
+              },
             ),
           ),
         );
@@ -542,11 +499,11 @@ class _SetupScreenState extends State<SetupScreen> {
                 height: 88,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: DcColors.panel,
                   borderRadius:
                       const BorderRadius.all(Radius.circular(12)),
                   border: Border.all(
-                      color: selected ? DcColors.orange : DcColors.border,
+                      color: selected ? DcColors.blue : DcColors.border,
                       width: selected ? 2.5 : 1),
                 ),
                 child: isRandom
@@ -578,25 +535,13 @@ class _SetupScreenState extends State<SetupScreen> {
         return Expanded(
           child: Padding(
             padding: const EdgeInsets.only(right: 8),
-            child: SizedBox(
+            child: DcPillButton(
+              label: '$n',
               height: 64,
-              child: TextButton(
-                onPressed: () => _setCount(n),
-                style: TextButton.styleFrom(
-                  backgroundColor:
-                      selected ? DcColors.orange : Colors.white,
-                  foregroundColor:
-                      selected ? Colors.white : DcColors.text,
-                  side: selected
-                      ? BorderSide.none
-                      : const BorderSide(
-                          color: DcColors.border, width: 1.5),
-                  shape: const StadiumBorder(),
-                  textStyle: const TextStyle(
-                      fontSize: 24, fontWeight: FontWeight.w900),
-                ),
-                child: Text('$n'),
-              ),
+              fontSize: 24,
+              color: selected ? null : DcColors.panel,
+              borderColor: selected ? null : DcColors.border,
+              onPressed: () => _setCount(n),
             ),
           ),
         );
@@ -763,11 +708,11 @@ class _SetupScreenState extends State<SetupScreen> {
             decoration: BoxDecoration(
               color: selected
                   ? currentColor.withOpacity(0.35)
-                  : Colors.white,
+                  : DcColors.panel,
               borderRadius:
                   const BorderRadius.all(Radius.circular(12)),
               border: Border.all(
-                  color: selected ? DcColors.orange : DcColors.border,
+                  color: selected ? DcColors.blue : DcColors.border,
                   width: selected ? 3 : 1),
             ),
             child: Column(

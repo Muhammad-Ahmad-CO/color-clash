@@ -4,6 +4,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../game/sound.dart';
+import '../widgets/dot_chrome.dart';
 
 class PreloaderScreen extends StatefulWidget {
   const PreloaderScreen({super.key});
@@ -40,7 +41,7 @@ class _PreloaderScreenState extends State<PreloaderScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1B1A1F),
+      backgroundColor: DcColors.page,
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -54,12 +55,21 @@ class _PreloaderScreenState extends State<PreloaderScreen>
                   child: Container(
                     width: 180,
                     height: 180,
-                    decoration: const BoxDecoration(
-                      borderRadius: BorderRadius.all(Radius.circular(24)),
+                    decoration: BoxDecoration(
+                      borderRadius:
+                          const BorderRadius.all(Radius.circular(24)),
+                      border: Border.all(color: DcColors.gold, width: 3),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.5),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
                     ),
                     child: ClipRRect(
                       borderRadius:
-                          const BorderRadius.all(Radius.circular(24)),
+                          const BorderRadius.all(Radius.circular(21)),
                       child: Image.asset('assets/logo.png',
                           width: 180, height: 180, fit: BoxFit.cover),
                     ),
@@ -68,21 +78,21 @@ class _PreloaderScreenState extends State<PreloaderScreen>
               },
             ),
             const SizedBox(height: 28),
-            const Text(
+            const TcOutlined(
               'COLOR COVER',
+              fontSize: 40,
+              letterSpacing: 3,
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 40,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 3,
-                color: Colors.white,
-              ),
+              height: 1.0,
             ),
             const SizedBox(height: 10),
             const Text(
               'made by Ahmed',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: Colors.white70),
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: DcColors.gold),
             ),
           ],
         ),

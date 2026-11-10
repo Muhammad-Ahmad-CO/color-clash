@@ -1,4 +1,4 @@
-// Color Cover — Achievements screen (Dot Clash chrome).
+// Color Cover — Achievements screen (Tiny Clash chrome, v3.5).
 // 7 local badges with coin rewards, paid once each. Progress bars show
 // how close a locked badge is. Reached from Home (not a bottom-nav tab).
 // No emoji anywhere.
@@ -60,7 +60,7 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
                         decoration: BoxDecoration(
                           color: unlocked
                               ? DcColors.gold
-                              : Colors.white,
+                              : DcColors.bar,
                           borderRadius: const BorderRadius.all(
                               Radius.circular(999)),
                           border: Border.all(color: DcColors.border),
@@ -69,10 +69,12 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
                           unlocked
                               ? 'UNLOCKED  +${a.reward}'
                               : '+${a.reward} COINS',
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w900,
-                              color: DcColors.text),
+                              color: unlocked
+                                  ? DcColors.ink
+                                  : Colors.white),
                         ),
                       ),
                     ],
@@ -88,7 +90,7 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
                         child: Container(
                           height: 10,
                           decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.08),
+                            color: Colors.white.withOpacity(0.12),
                             borderRadius: const BorderRadius.all(
                                 Radius.circular(999)),
                           ),
@@ -98,8 +100,8 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
                             child: Container(
                               decoration: BoxDecoration(
                                 color: unlocked
-                                    ? DcColors.gold
-                                    : DcColors.orange,
+                                    ? DcColors.green
+                                    : DcColors.blue,
                                 borderRadius: const BorderRadius.all(
                                     Radius.circular(999)),
                               ),

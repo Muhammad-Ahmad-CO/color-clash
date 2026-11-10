@@ -1,9 +1,9 @@
-// Color Cover — Home screen (Dot Clash chrome, v3b).
-// Light grey page, white top bar with the centred wordmark, off-white
-// hero card with the Pixel Tiles logo, one orange pill CTA per screen
-// (VS COMPUTER first and biggest), white pill secondaries, bottom nav.
-// The preloader still shows the dark logo screen first; this is the
-// light home that follows it. No emoji anywhere.
+// Color Cover — Home screen (Tiny Clash chrome, v3.5).
+// Rich dark-navy game menu: top currency bar (logo chip + rank chip +
+// gold coins), big outlined COLOR COVER title, Pixel Tiles logo in a
+// chunky card, big gradient VS COMPUTER button, chunky PLAY / MODES
+// cards, daily challenge + missions strip, daily spin, MY RECORDS,
+// streak/rank, history/achievements/shop, sound switch. No emoji anywhere.
 import 'package:flutter/material.dart';
 import '../data/game_data.dart';
 import '../game/coins.dart';
@@ -23,7 +23,9 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    CoinsService.load();
+    CoinsService.load().then((_) {
+      if (mounted) setState(() {});
+    });
     SoundFx.load().then((_) {
       if (mounted) setState(() {});
     });
@@ -71,7 +73,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () => Navigator.pop(context),
             child: const Text('NICE!',
                 style: TextStyle(
-                    fontWeight: FontWeight.w900, color: DcColors.orange)),
+                    fontWeight: FontWeight.w900, color: DcColors.blue)),
           ),
         ],
       ),
@@ -82,41 +84,19 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: DcColors.page,
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        centerTitle: true,
-        title: const Text.rich(
-          TextSpan(
-            children: [
-              TextSpan(
-                  text: 'COLOR ',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 2,
-                      color: DcColors.text)),
-              TextSpan(
-                  text: 'COVER',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 2,
-                      color: DcColors.orange)),
-            ],
-          ),
-          style: TextStyle(fontSize: 22),
-        ),
-      ),
       bottomNavigationBar: const DotBottomNav(current: DcTab.home),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              _buildCurrencyBar(),
+              const SizedBox(height: 16),
               if (_dailyClaimed > 0)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: DcCard(
-                    color: const Color(0xFFFFF3D6),
                     borderColor: DcColors.gold,
                     borderWidth: 2,
                     child: Row(
@@ -127,7 +107,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w900,
-                                color: DcColors.text),
+                                color: Colors.white),
                           ),
                         ),
                         Text(
@@ -135,7 +115,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w900,
-                              color: DcColors.orangeDark),
+                              color: DcColors.gold),
                         ),
                         const SizedBox(width: 8),
                         InkWell(
@@ -151,23 +131,34 @@ class _HomeScreenState extends State<HomeScreen> {
                 padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
                 child: Column(
                   children: [
-                    ClipRRect(
-                      borderRadius:
-                          const BorderRadius.all(Radius.circular(16)),
-                      child: Image.asset('assets/logo.png',
-                          width: 140, height: 140, fit: BoxFit.cover),
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: const BorderRadius.all(
+                            Radius.circular(18)),
+                        border:
+                            Border.all(color: DcColors.gold, width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.45),
+                            blurRadius: 14,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.all(
+                            Radius.circular(16)),
+                        child: Image.asset('assets/logo.png',
+                            width: 140, height: 140, fit: BoxFit.cover),
+                      ),
                     ),
                     const SizedBox(height: 16),
-                    const Text(
+                    const TcOutlined(
                       'COLOR COVER',
+                      fontSize: 34,
+                      letterSpacing: 2,
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 34,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 2,
-                        color: DcColors.text,
-                        height: 1.0,
-                      ),
+                      height: 1.0,
                     ),
                     const SizedBox(height: 8),
                     const Text(
@@ -284,7 +275,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           TextStyle(color: DcColors.muted, fontSize: 16)),
                   Switch(
                     value: !SoundFx.muted,
-                    activeColor: DcColors.orange,
+                    activeColor: DcColors.gold,
                     onChanged: (v) {
                       SoundFx.setMuted(!v);
                       setState(() {});
@@ -293,7 +284,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   Text(SoundFx.muted ? 'OFF' : 'ON',
                       style: const TextStyle(
-                          color: DcColors.text,
+                          color: Colors.white,
                           fontWeight: FontWeight.w700)),
                 ],
               ),
@@ -306,6 +297,103 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// Top currency bar (Tiny Clash style): logo chip + rank chip +
+  /// gold coins balance. Tapping the coins chip opens the Shop.
+  Widget _buildCurrencyBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: const BoxDecoration(
+        color: DcColors.bar,
+        borderRadius: BorderRadius.all(Radius.circular(999)),
+        border: Border.fromBorderSide(
+            BorderSide(color: DcColors.border)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black38,
+            blurRadius: 8,
+            offset: Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: const BorderRadius.all(Radius.circular(10)),
+            child: Image.asset('assets/logo.png',
+                width: 36, height: 36, fit: BoxFit.cover),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: const BoxDecoration(
+              color: DcColors.panel,
+              borderRadius: BorderRadius.all(Radius.circular(999)),
+              border: Border.fromBorderSide(
+                  BorderSide(color: DcColors.border)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.emoji_events,
+                    size: 18, color: DcColors.gold),
+                const SizedBox(width: 4),
+                Text(StatsService.rankName.toUpperCase(),
+                    style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white)),
+              ],
+            ),
+          ),
+          const Spacer(),
+          InkWell(
+            onTap: () {
+              SoundFx.click();
+              Navigator.pushNamed(context, '/shop');
+            },
+            borderRadius: const BorderRadius.all(Radius.circular(999)),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: const BoxDecoration(
+                color: DcColors.panel,
+                borderRadius: BorderRadius.all(Radius.circular(999)),
+                border: Border.fromBorderSide(
+                    BorderSide(color: DcColors.gold, width: 1.5)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 20,
+                    height: 20,
+                    decoration: const BoxDecoration(
+                      color: DcColors.gold,
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: const Text('C',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w900,
+                            color: DcColors.ink)),
+                  ),
+                  const SizedBox(width: 6),
+                  Text('${CoinsService.coins}',
+                      style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white)),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -327,7 +415,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w900,
-                      color: DcColors.text),
+                      color: Colors.white),
                 ),
               ),
               if (StatsService.isChampion)
@@ -335,14 +423,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: const BoxDecoration(
-                    color: Color(0xFFFFD700),
+                    color: DcColors.gold,
                     borderRadius: BorderRadius.all(Radius.circular(999)),
                   ),
                   child: const Text('CHAMPION',
                       style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w900,
-                          color: Color(0xFF1A0A00))),
+                          color: DcColors.ink)),
                 ),
             ],
           ),
@@ -355,13 +443,13 @@ class _HomeScreenState extends State<HomeScreen> {
           Row(
             children: [
               const Icon(Icons.local_fire_department,
-                  size: 22, color: DcColors.orange),
+                  size: 22, color: DcColors.gold),
               const SizedBox(width: 6),
               Text('DAY $filled/7',
                   style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w900,
-                      color: DcColors.text)),
+                      color: Colors.white)),
               const SizedBox(width: 10),
               ...List.generate(7, (i) {
                 return Padding(
@@ -372,8 +460,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: i < filled
-                          ? DcColors.orange
-                          : Colors.black.withOpacity(0.12),
+                          ? DcColors.gold
+                          : Colors.white.withOpacity(0.2),
                     ),
                   ),
                 );
@@ -383,7 +471,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
-                        color: DcColors.orangeDark)),
+                        color: DcColors.gold)),
             ],
           ),
           const SizedBox(height: 4),
@@ -405,9 +493,8 @@ class _HomeScreenState extends State<HomeScreen> {
             arguments:
                 SetupArgs(pack: pack, dailyChallenge: true));
       },
-      borderRadius: const BorderRadius.all(Radius.circular(14)),
+      borderRadius: const BorderRadius.all(Radius.circular(18)),
       child: DcCard(
-        color: const Color(0xFFFFF3D6),
         borderColor: DcColors.gold,
         borderWidth: 2,
         child: Row(
@@ -421,13 +508,13 @@ class _HomeScreenState extends State<HomeScreen> {
                           fontSize: 13,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 1,
-                          color: DcColors.orangeDark)),
+                          color: DcColors.gold)),
                   const SizedBox(height: 4),
                   Text(modePackName(pack),
                       style: const TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w900,
-                          color: DcColors.text)),
+                          color: Colors.white)),
                   Text(modePackDesc(pack),
                       style: const TextStyle(
                           fontSize: 14, color: DcColors.muted)),
@@ -438,7 +525,7 @@ class _HomeScreenState extends State<HomeScreen> {
               padding:
                   const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: won ? const Color(0xFF43A047) : DcColors.orange,
+                color: won ? DcColors.green : DcColors.blue,
                 borderRadius:
                     const BorderRadius.all(Radius.circular(999)),
               ),
@@ -467,7 +554,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 1,
-                  color: DcColors.text)),
+                  color: Colors.white)),
           const SizedBox(height: 10),
           ...missions.map((m) {
             final progress = StatsService.missionProgress(m.id);
@@ -485,7 +572,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             style: const TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w800,
-                                color: DcColors.text)),
+                                color: Colors.white)),
                       ),
                       Text(StatsService.missionProgressText(m.id),
                           style: const TextStyle(
@@ -501,8 +588,8 @@ class _HomeScreenState extends State<HomeScreen> {
                               : () => _claimMission(m.id),
                           style: TextButton.styleFrom(
                             backgroundColor: claimed
-                                ? const Color(0xFFE5E7EB)
-                                : DcColors.orange,
+                                ? DcColors.bar
+                                : DcColors.blue,
                             foregroundColor: claimed
                                 ? DcColors.muted
                                 : Colors.white,
@@ -522,19 +609,19 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 6),
                   Container(
                     height: 8,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFE5E7EB),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.12),
                       borderRadius:
-                          BorderRadius.all(Radius.circular(999)),
+                          const BorderRadius.all(Radius.circular(999)),
                     ),
                     child: FractionallySizedBox(
                       widthFactor: progress,
                       alignment: Alignment.centerLeft,
                       child: Container(
-                        decoration: const BoxDecoration(
-                          color: DcColors.orange,
-                          borderRadius:
-                              BorderRadius.all(Radius.circular(999)),
+                        decoration: BoxDecoration(
+                          color: complete ? DcColors.green : DcColors.blue,
+                          borderRadius: const BorderRadius.all(
+                              Radius.circular(999)),
                         ),
                       ),
                     ),
@@ -567,7 +654,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         fontSize: 18,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 1,
-                        color: DcColors.text)),
+                        color: Colors.white)),
                 SizedBox(height: 2),
                 Text('One free spin a day — coins or a rare colour.',
                     style: TextStyle(fontSize: 14, color: DcColors.muted)),
@@ -580,7 +667,7 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: done ? null : _spin,
               style: TextButton.styleFrom(
                 backgroundColor:
-                    done ? const Color(0xFFE5E7EB) : DcColors.orange,
+                    done ? DcColors.bar : DcColors.blue,
                 foregroundColor:
                     done ? DcColors.muted : Colors.white,
                 shape: const StadiumBorder(),
@@ -607,7 +694,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   fontSize: 18,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 1,
-                  color: DcColors.text)),
+                  color: Colors.white)),
           const SizedBox(height: 10),
           Row(
             children: [
@@ -634,7 +721,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
         decoration: const BoxDecoration(
-          color: Colors.white,
+          color: DcColors.bar,
           borderRadius: BorderRadius.all(Radius.circular(12)),
           border: Border.fromBorderSide(
               BorderSide(color: DcColors.border)),
@@ -645,7 +732,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: const TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
-                    color: DcColors.text)),
+                    color: Colors.white)),
             const SizedBox(height: 2),
             Text(label,
                 textAlign: TextAlign.center,
@@ -668,7 +755,7 @@ class _Chip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: DcColors.bar,
         borderRadius: const BorderRadius.all(Radius.circular(999)),
         border: Border.all(color: DcColors.border),
       ),
@@ -676,7 +763,7 @@ class _Chip extends StatelessWidget {
           style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w800,
-              color: DcColors.text)),
+              color: Colors.white)),
     );
   }
 }

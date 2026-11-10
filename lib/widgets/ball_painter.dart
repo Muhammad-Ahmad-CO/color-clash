@@ -1,9 +1,11 @@
 // Color Cover — draws all 30 ball shapes + the arena.
 // Reference look (REFERENCE_UI_SPEC.md): flat tiles with no grid lines and
-// no unpainted state, flat balls with no outline/gloss, power-up tiles as a
-// solid bright square + drawn icon (never a letter), "+" marks on wormhole
-// and recently converted tiles, trails only for Nitro / Colossus / shop
-// cosmetics — never in normal play.
+// no unpainted state, flat balls, power-up tiles as a solid bright square
+// + drawn icon (never a letter), "+" marks on wormhole and recently
+// converted tiles, trails only for Nitro / Colossus / shop cosmetics —
+// never in normal play. Tiny Clash restyle (v3.5): a soft oval shadow
+// under each ball and a subtle top gloss on power-up tiles — a deliberate
+// break from the reference's "no shadow/gloss", per TINY_CLASH_UI_SPEC.md.
 import 'dart:math';
 import 'package:flutter/material.dart';
 import '../data/game_data.dart';
@@ -772,6 +774,15 @@ class ArenaPainter extends CustomPainter {
         Offset(center.dx, center.dy - size / 2), Offset(center.dx, center.dy + size / 2), p);
   }
 
+  /// Subtle top gloss on a tile: a low-opacity white strip over the top
+  /// ~35% of the tile. Drawn BEFORE the icon/star so the glyph stays
+  /// crisp. At tile scale the effect is deliberately faint.
+  void _drawGloss(Canvas canvas, Rect rect) {
+    canvas.drawRect(
+        Rect.fromLTWH(rect.left, rect.top, rect.width, rect.height * 0.35),
+        Paint()..color = Colors.white.withOpacity(0.16));
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     final tileW = size.width / engine.cols;
@@ -823,20 +834,23 @@ class ArenaPainter extends CustomPainter {
       }
     }
 
-    // Golden Tile (Golden Rush mode): gold square + drawn star.
+    // Golden Tile (Golden Rush mode): gold square + gloss + drawn star.
     if (engine.goldenVisible && engine.goldenCol >= 0) {
       final rect = Rect.fromLTWH(engine.goldenCol * tileW,
           engine.goldenRow * tileH, tileW, tileH);
       canvas.drawRect(rect, Paint()..color = const Color(0xFFFFCA28));
+      _drawGloss(canvas, rect);
       canvas.drawPath(
           starPath(rect.center, 5, tileW * 0.32, tileW * 0.14),
           Paint()..color = const Color(0xFF1A0A00));
     }
 
-    // Power-up tiles: solid square in the power-up's OWN colour + drawn
-    // icon glyph in high-contrast colour (never a letter). The icon fills
-    // 80% of the tile so each power-up reads at a glance on a phone.
-    // A mystery tile hides its power behind a purple gift box.
+    // Power-up tiles: solid square in the power-up's OWN colour + a
+    // subtle top gloss + drawn icon glyph in high-contrast colour (never
+    // a letter). The icon fills 80% of the tile so each power-up reads at
+    // a glance on a phone. Gloss is drawn BEFORE the icon so it never
+    // washes the glyph out. A mystery tile hides its power behind a
+    // purple gift box.
     for (final p in engine.powerUps) {
       final rect = Rect.fromLTWH(p.col * tileW, p.row * tileH, tileW, tileH);
       final iconRect = Rect.fromLTWH(
@@ -846,11 +860,13 @@ class ArenaPainter extends CustomPainter {
           tileH * 0.8);
       if (p.mystery) {
         canvas.drawRect(rect, Paint()..color = const Color(0xFF9C27B0));
+        _drawGloss(canvas, rect);
         drawPowerUpIcon(canvas, 'mystery', iconRect, Colors.white);
         continue;
       }
       final tileColor = Color(p.def.value);
       canvas.drawRect(rect, Paint()..color = tileColor);
+      _drawGloss(canvas, rect);
       drawPowerUpIcon(canvas, p.def.id, iconRect, contrastTextColor(tileColor));
     }
 
@@ -957,6 +973,18 @@ class ArenaPainter extends CustomPainter {
       }
 
       final radius = tileW * (isColossus ? 2.2 : 0.375);
+      // Soft oval shadow under the ball (Tiny Clash depth cue): a small
+      // translucent ellipse offset below the ball, drawn before the ball
+      // shape. Kept faint so Trinity's three close balls don't read as
+      // one blob; it clips at the arena edge for bottom-row balls.
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(center.dx, center.dy + radius * 0.55),
+          width: radius * 1.7,
+          height: radius * 0.55,
+        ),
+        Paint()..color = Colors.black.withOpacity(0.2),
+      );
       drawBallShape(
         canvas,
         cfg.shape,

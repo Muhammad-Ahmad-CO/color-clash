@@ -1,4 +1,4 @@
-// Color Cover — Match History screen (Dot Clash chrome).
+// Color Cover — Match History screen (Tiny Clash chrome, v3.5).
 // Last 20 finished matches, newest first, stored on the phone.
 // Reached from Home (not a bottom-nav tab). No emoji anywhere.
 import 'package:flutter/material.dart';
@@ -72,8 +72,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   horizontal: 10, vertical: 5),
                               decoration: BoxDecoration(
                                 color: r.won
-                                    ? DcColors.orange
-                                    : Colors.white,
+                                    ? DcColors.blue
+                                    : DcColors.bar,
                                 borderRadius: const BorderRadius.all(
                                     Radius.circular(999)),
                                 border: Border.all(color: DcColors.border),
@@ -85,7 +85,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                     fontWeight: FontWeight.w900,
                                     color: r.won
                                         ? Colors.white
-                                        : DcColors.text),
+                                        : DcColors.muted),
                               ),
                             ),
                           ],

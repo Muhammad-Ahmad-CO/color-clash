@@ -1,9 +1,10 @@
-// Color Cover — Game screen (reference look, REFERENCE_UI_SPEC.md).
+// Color Cover — Game screen (Tiny Clash chrome, v3.5).
 // Animated gradient background derived from the player colours, a 3:4
-// arena floating in it, sharp full-width power-up banners stacked in the
-// top margin, thin bottom territory bars, and the end card as a flat overlay
-// on the dimmed playfield. No timer, no names, no pause/mute HUD, no %
-// numbers, no emoji anywhere on the match screen.
+// arena floating in it, chunky rounded power-up banners stacked in the
+// top margin, navy territory pill at the bottom, and the end card as a
+// chunky navy card with a gold crown on the dimmed playfield. No timer,
+// no names, no pause/mute HUD, no % numbers, no emoji anywhere on the
+// match screen.
 // Steering: a VISIBLE floating joystick appears where the player's finger
 // touches down (dynamic origin) and follows the finger — the user asked
 // for a joystick they can see (03:51 PKT), so the invisible drag of v2
@@ -460,9 +461,17 @@ class _GameScreenState extends State<GameScreen>
             padding:
                 const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.92),
+              color: DcColors.bar.withOpacity(0.95),
               borderRadius:
                   const BorderRadius.all(Radius.circular(999)),
+              border: Border.all(color: DcColors.border),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.35),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
             ),
             child: const Text('TOUCH AND DRAG TO STEER',
                 textAlign: TextAlign.center,
@@ -470,7 +479,7 @@ class _GameScreenState extends State<GameScreen>
                     fontWeight: FontWeight.w800,
                     fontSize: 12,
                     letterSpacing: 1,
-                    color: DcColors.text)),
+                    color: Colors.white)),
           ),
         ),
       ));
@@ -572,10 +581,12 @@ class _GameScreenState extends State<GameScreen>
   }
 }
 
-/// Stacked power-up banners: sharp full-arena-width bars in the top
-/// margin, newest on top, background = activator's colour, contrasting
-/// extra-bold caps name + a one-line "what it does" underneath. Two
-/// banners max (38 px each) so they always fit the 84 px zone.
+/// Stacked power-up banners: chunky rounded full-arena-width bars in
+/// the top margin, newest on top, background = activator's colour,
+/// contrasting extra-bold caps name + a one-line "what it does"
+/// underneath, soft drop shadow. Two banners max (38 px each) so they
+/// always fit the 84 px zone. The name is only 13 px, so no outline
+/// stroke — plain heavy type (a stroke would fill the counters).
 class _BannerZone extends StatelessWidget {
   const _BannerZone(
       {required this.banners,
@@ -603,7 +614,18 @@ class _BannerZone extends StatelessWidget {
             width: width,
             height: hasEffect ? 38 : 24,
             margin: const EdgeInsets.only(bottom: 2),
-            color: bg,
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius:
+                  const BorderRadius.all(Radius.circular(10)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.35),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
             alignment: Alignment.center,
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -638,11 +660,10 @@ class _BannerZone extends StatelessWidget {
 
 /// Bottom territory bar: one thin row per player — name label + ball dot +
 /// translucent track with a fill proportional to the share + a fixed tick.
-/// No percentage numbers (the reference prints none). Dot Clash chrome:
-/// the rows sit in a clean off-white card instead of floating on the
-/// gradient — same content, same reference numbers (none).
+/// No percentage numbers (the reference prints none). Tiny Clash chrome:
+/// the rows sit in a dark-navy pill with rounded tracks and gold accents.
 /// A player on a comeback boost (trailing by 40+ tiles) gets a small
-/// orange COMEBACK tag after their track.
+/// gold COMEBACK tag after their track.
 class _TerritoryBar extends StatelessWidget {
   const _TerritoryBar(
       {required this.percentages,
@@ -660,9 +681,16 @@ class _TerritoryBar extends StatelessWidget {
       width: width,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: DcColors.card,
-        borderRadius: const BorderRadius.all(Radius.circular(12)),
+        color: DcColors.bar,
+        borderRadius: const BorderRadius.all(Radius.circular(16)),
         border: Border.all(color: DcColors.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.35),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -694,12 +722,22 @@ class _TerritoryBar extends StatelessWidget {
                     builder: (context, c) {
                       return Container(
                         height: 10,
-                        color: Colors.black.withOpacity(0.08),
+                        decoration: const BoxDecoration(
+                          color: Colors.white24,
+                          borderRadius: BorderRadius.all(
+                              Radius.circular(999)),
+                        ),
                         child: Stack(
                           children: [
                             FractionallySizedBox(
                               widthFactor: share,
-                              child: Container(color: color),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  borderRadius: const BorderRadius.all(
+                                      Radius.circular(999)),
+                                ),
+                              ),
                             ),
                             Positioned(
                               left: c.maxWidth * 0.86,
@@ -707,7 +745,7 @@ class _TerritoryBar extends StatelessWidget {
                               bottom: 0,
                               width: 2,
                               child: Container(
-                                  color: Colors.black.withOpacity(0.3)),
+                                  color: Colors.white.withOpacity(0.6)),
                             ),
                           ],
                         ),
@@ -721,7 +759,7 @@ class _TerritoryBar extends StatelessWidget {
                       style: TextStyle(
                           fontSize: 9,
                           fontWeight: FontWeight.w900,
-                          color: DcColors.orange)),
+                          color: DcColors.gold)),
                 ],
               ],
             ),
@@ -732,7 +770,8 @@ class _TerritoryBar extends StatelessWidget {
   }
 }
 
-/// Pause overlay (opened by the system back button): flat, no icons.
+/// Pause overlay (opened by the system back button): dimmed playfield
+/// + a chunky navy card with a gradient RESUME button.
 class _PauseOverlay extends StatelessWidget {
   const _PauseOverlay({required this.onResume, required this.onQuit});
   final VoidCallback onResume;
@@ -743,56 +782,49 @@ class _PauseOverlay extends StatelessWidget {
     return Container(
       color: Colors.black.withOpacity(0.6),
       alignment: Alignment.center,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('PAUSED',
-              style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white)),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: 180,
-            child: TextButton(
-              onPressed: onResume,
-              style: TextButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.black,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: const StadiumBorder(),
-                textStyle: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w900),
-              ),
-              child: const Text('RESUME'),
+      child: DcCard(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const TcOutlined(
+              'PAUSED',
+              fontSize: 32,
+              letterSpacing: 2,
+              textAlign: TextAlign.center,
+              height: 1.0,
             ),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: 180,
-            child: TextButton(
-              onPressed: onQuit,
-              style: TextButton.styleFrom(
-                backgroundColor: Colors.white24,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: const StadiumBorder(),
-                textStyle: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w900),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: 200,
+              child: DcPillButton(
+                label: 'RESUME',
+                height: 52,
+                fontSize: 16,
+                onPressed: onResume,
               ),
-              child: const Text('QUIT TO HOME'),
             ),
-          ),
-        ],
+            const SizedBox(height: 10),
+            SizedBox(
+              width: 200,
+              child: DcSecondaryButton(
+                label: 'QUIT TO HOME',
+                height: 52,
+                fontSize: 16,
+                onPressed: onQuit,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-/// End card: the whole playfield dims to near-black, then a flat
-/// winner-colour rectangle (sharp corners) with a drawn crown,
-/// "<NAME> DOMINATES!" and the match duration. Below it: match stats
-/// (tiles painted, power-ups, biggest lead, best combo), newly unlocked
+/// End card: the whole playfield dims to near-black, then a chunky
+/// navy card (winner-colour border, gold crown, winner name in heavy
+/// outlined caps, match duration). Below it: match stats (tiles
+/// painted, power-ups, biggest lead, best combo), newly unlocked
 /// achievements, bonus announcements (streak milestones, daily challenge,
 /// 7-day streak, bot unlocks), coins, and actions — NEXT MATCH while a
 /// best-of series is undecided, REMATCH (new series) once it is decided,
@@ -837,7 +869,6 @@ class _EndCardOverlay extends StatelessWidget {
     final winnerIndex = engine.winnerIndex();
     final winner = players[winnerIndex];
     final bg = Color(winner.colour.value);
-    final fg = contrastTextColor(bg);
     final inSeries = seriesNeeded > 1 && players.length == 2;
     final seriesWinner =
         seriesDecided ? (seriesScore[0] >= seriesNeeded ? 0 : 1) : -1;
@@ -849,36 +880,50 @@ class _EndCardOverlay extends StatelessWidget {
       alignment: Alignment.center,
       child: LayoutBuilder(
         builder: (context, c) {
-          final cardW = c.maxWidth * 0.66;
-          final cardH = c.maxHeight * 0.24;
+          final cardW = c.maxWidth * 0.72;
           return SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
                   width: cardW,
-                  height: cardH,
-                  color: bg,
+                  padding:
+                      const EdgeInsets.fromLTRB(20, 22, 20, 20),
+                  decoration: BoxDecoration(
+                    color: DcColors.panel,
+                    borderRadius: const BorderRadius.all(
+                        Radius.circular(20)),
+                    border: Border.all(color: bg, width: 3),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.5),
+                        blurRadius: 18,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       CustomPaint(
-                        size: const Size(28, 20),
-                        painter: _CrownPainter(fg),
+                        size: const Size(34, 24),
+                        painter: _CrownPainter(DcColors.gold),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
+                      const SizedBox(height: 10),
+                      TcOutlined(
                         title,
+                        fontSize: 22,
+                        letterSpacing: 1,
                         textAlign: TextAlign.center,
-                        style: TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w900,
-                            color: fg),
+                        height: 1.1,
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 6),
                       Text(
                         engine.matchDurationLabel(),
-                        style: TextStyle(fontSize: 12, color: fg),
+                        style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: DcColors.muted),
                       ),
                     ],
                   ),
@@ -895,7 +940,7 @@ class _EndCardOverlay extends StatelessWidget {
                           color: Colors.white),
                     ),
                   ),
-                // Match stats (Dot Clash-style one-line rows).
+                // Match stats (one-line rows).
                 Padding(
                   padding: const EdgeInsets.only(top: 12),
                   child: Column(
@@ -938,7 +983,7 @@ class _EndCardOverlay extends StatelessWidget {
                           style: const TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w900,
-                              color: Color(0xFFFFCA28)),
+                              color: DcColors.gold),
                         );
                       }).toList(),
                     ),
@@ -954,7 +999,7 @@ class _EndCardOverlay extends StatelessWidget {
                           style: const TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w900,
-                              color: Color(0xFFFFCA28)),
+                              color: DcColors.gold),
                         );
                       }).toList(),
                     ),
@@ -966,56 +1011,39 @@ class _EndCardOverlay extends StatelessWidget {
                         style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w900,
-                            color: Color(0xFFFFCA28))),
+                            color: DcColors.gold)),
                   ),
                 const SizedBox(height: 18),
                 SizedBox(
                   width: cardW,
-                  child: TextButton(
+                  child: DcPillButton(
+                    label: inSeries && !seriesDecided
+                        ? 'NEXT MATCH'
+                        : 'REMATCH',
+                    height: 52,
+                    fontSize: 16,
                     onPressed:
                         inSeries && !seriesDecided ? onNextMatch : onRematch,
-                    style: TextButton.styleFrom(
-                      backgroundColor: bg,
-                      foregroundColor: fg,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: const StadiumBorder(),
-                      textStyle: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w900),
-                    ),
-                    child: Text(
-                        inSeries && !seriesDecided ? 'NEXT MATCH' : 'REMATCH'),
                   ),
                 ),
                 const SizedBox(height: 10),
                 SizedBox(
                   width: cardW,
-                  child: TextButton(
+                  child: DcSecondaryButton(
+                    label: 'CHANGE SETUP',
+                    height: 52,
+                    fontSize: 16,
                     onPressed: onChangeSetup,
-                    style: TextButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: const StadiumBorder(),
-                      textStyle: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w900),
-                    ),
-                    child: const Text('CHANGE SETUP'),
                   ),
                 ),
                 const SizedBox(height: 10),
                 SizedBox(
                   width: cardW,
-                  child: TextButton(
+                  child: DcSecondaryButton(
+                    label: 'HOME',
+                    height: 52,
+                    fontSize: 16,
                     onPressed: onHome,
-                    style: TextButton.styleFrom(
-                      backgroundColor: Colors.white24,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: const StadiumBorder(),
-                      textStyle: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w900),
-                    ),
-                    child: const Text('HOME'),
                   ),
                 ),
               ],
@@ -1045,7 +1073,7 @@ class _StatLine extends StatelessWidget {
                 style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
-                    color: Colors.white60)),
+                    color: DcColors.muted)),
             TextSpan(
                 text: value,
                 style: const TextStyle(
