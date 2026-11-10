@@ -225,33 +225,38 @@ class PlayerConfig {
       PlayerConfig(name: name, colour: colour, shape: shape);
 }
 
-/// A power-up definition. `letter` is drawn on its field tile.
+/// A power-up definition. `letter` is a legacy label (tiles now use drawn
+/// icons, never letters). `effect` is the one-line banner text shown under
+/// the power-up name when it is collected.
 class PowerUpDef {
-  const PowerUpDef(this.id, this.name, this.desc, this.letter, this.value);
+  const PowerUpDef(this.id, this.name, this.desc, this.letter, this.value, this.effect);
   final String id;
   final String name;
   final String desc;
   final String letter;
   final int value;
+  final String effect;
 }
 
 const int kPowerUpCount = 13;
 
 /// 10 base power-ups + Bomb Ball + FREEZE + MAGNET = 13 total.
+/// NOTE: every `value` must be unique — the field tile uses it as its
+/// background colour, so two power-ups sharing a value look identical.
 const List<PowerUpDef> kPowerUps = [
-  PowerUpDef('speed', 'SPEED +33%', 'Your ball is 33% faster for 10 seconds.', 'S', 0xFF29B6F6),
-  PowerUpDef('nitro', 'NITRO', 'Very fast with a bright trail for 8 seconds.', 'N', 0xFFFF6D00),
-  PowerUpDef('wrecking', 'WRECKING BALL', 'Paints a bigger area (radius 2) for 10 seconds.', 'W', 0xFFE6193C),
-  PowerUpDef('colossus', 'COLOSSUS', 'Your ball grows huge and paints radius 2 for 10 seconds.', 'C', 0xFF8E24AA),
-  PowerUpDef('fortify', 'FORTIFY +10 SECONDS', 'Your tiles cannot be taken for 10 seconds.', 'F', 0xFF43A047),
-  PowerUpDef('infiltrator', 'INFILTRATOR +10 SECONDS', 'Paints enemy tiles with radius 2 for 10 seconds.', 'I', 0xFFFF8F00),
-  PowerUpDef('ghost', 'GHOST', 'Pass straight through enemy balls for 8 seconds.', 'G', 0xFFB0BEC5),
-  PowerUpDef('blackhole', 'BLACK HOLE', 'Pulls enemy balls towards you for 5 seconds.', 'B', 0xFF212121),
-  PowerUpDef('tidal', 'TIDAL WAVE', 'Instantly paints your full row and column.', 'T', 0xFF00BCD4),
-  PowerUpDef('wormhole', 'WORMHOLE', 'Teleports your ball to a random tile.', 'H', 0xFF7C4DFF),
-  PowerUpDef('bomb', 'BOMB BALL', 'Explodes a 5x5 area to your colour!', 'B', 0xFF212121),
-  PowerUpDef('freeze', 'FREEZE', 'Freeze all enemy balls for 3 seconds.', 'Z', 0xFF00E5FF),
-  PowerUpDef('magnet', 'MAGNET', 'Pull nearby power-up tiles to your ball for 8 seconds.', 'M', 0xFFFFD54F),
+  PowerUpDef('speed', 'SPEED +33%', 'Your ball is 33% faster for 10 seconds.', 'S', 0xFF29B6F6, '+33% speed for 10s'),
+  PowerUpDef('nitro', 'NITRO', 'Very fast with a bright trail for 8 seconds.', 'N', 0xFFFF6D00, 'Super fast with a gold trail — 8s'),
+  PowerUpDef('wrecking', 'WRECKING BALL', 'Paints a bigger area (radius 2) for 10 seconds.', 'W', 0xFFE6193C, 'Paints a bigger area — 10s'),
+  PowerUpDef('colossus', 'COLOSSUS', 'Your ball grows huge and paints radius 2 for 10 seconds.', 'C', 0xFF8E24AA, 'Giant ball, paints radius 2 — 10s'),
+  PowerUpDef('fortify', 'FORTIFY +10 SECONDS', 'Your tiles cannot be taken for 10 seconds.', 'F', 0xFF43A047, 'Your tiles can\'t be taken — 10s'),
+  PowerUpDef('infiltrator', 'INFILTRATOR +10 SECONDS', 'Paints enemy tiles with radius 2 for 10 seconds.', 'I', 0xFFFF8F00, 'Paints enemy tiles, radius 2 — 10s'),
+  PowerUpDef('ghost', 'GHOST', 'Pass straight through enemy balls for 8 seconds.', 'G', 0xFFB0BEC5, 'Pass through enemy balls — 8s'),
+  PowerUpDef('blackhole', 'BLACK HOLE', 'Pulls enemy balls towards you for 5 seconds.', 'B', 0xFF212121, 'Pulls enemy balls to you — 5s'),
+  PowerUpDef('tidal', 'TIDAL WAVE', 'Instantly paints your full row and column.', 'T', 0xFF00BCD4, 'Paints your whole row + column'),
+  PowerUpDef('wormhole', 'WORMHOLE', 'Teleports your ball to a random tile.', 'H', 0xFF7C4DFF, 'Teleports to a random tile'),
+  PowerUpDef('bomb', 'BOMB BALL', 'Explodes a 5x5 area to your colour!', 'B', 0xFFBF360C, 'Explodes a 5x5 area to your colour'),
+  PowerUpDef('freeze', 'FREEZE', 'Freeze all enemy balls for 3 seconds.', 'Z', 0xFF00E5FF, 'Enemy balls stop for 3s'),
+  PowerUpDef('magnet', 'MAGNET', 'Pull nearby power-up tiles to your ball for 8 seconds.', 'M', 0xFFFFD54F, 'Power-ups drift to you — 8s'),
 ];
 
 PowerUpDef powerUpById(String id) =>

@@ -11,6 +11,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../data/game_data.dart';
 import '../game/coins.dart';
 import '../game/engine.dart';
@@ -31,7 +32,7 @@ class GameScreen extends StatefulWidget {
 }
 
 class _GameScreenState extends State<GameScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late GameEngine _engine;
   Timer? _timer;
   late AnimationController _bgCtrl;
@@ -56,11 +57,25 @@ class _GameScreenState extends State<GameScreen>
   void initState() {
     super.initState();
     _engine = GameEngine(widget.config);
+    WidgetsBinding.instance.addObserver(this);
+    _hideSystemBars();
     _bgCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 14),
     )..repeat(reverse: true);
     _startLoop();
+  }
+
+  // Fullscreen: hide the Android system buttons (back/home/recent) as
+  // soon as the game opens. immersiveSticky brings them back only on an
+  // edge swipe, then auto-hides them again.
+  void _hideSystemBars() {
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _hideSystemBars();
   }
 
   void _startLoop() {
@@ -138,6 +153,7 @@ class _GameScreenState extends State<GameScreen>
   void dispose() {
     _timer?.cancel();
     _bgCtrl.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
@@ -445,7 +461,8 @@ class _GameScreenState extends State<GameScreen>
 
 /// Stacked power-up banners: sharp full-arena-width bars in the top
 /// margin, newest on top, background = activator's colour, contrasting
-/// extra-bold caps text. Empty gradient when nothing is active.
+/// extra-bold caps name + a one-line "what it does" underneath. Two
+/// banners max (38 px each) so they always fit the 84 px zone.
 class _BannerZone extends StatelessWidget {
   const _BannerZone(
       {required this.banners,
@@ -459,7 +476,7 @@ class _BannerZone extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final visible = banners.reversed.take(3).toList();
+    final visible = banners.reversed.take(2).toList();
     return SizedBox(
       width: width,
       height: height,
@@ -467,20 +484,37 @@ class _BannerZone extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.end,
         children: visible.map((b) {
           final bg = Color(players[b.player].colour.value);
+          final fg = contrastTextColor(bg);
+          final hasEffect = b.effect.isNotEmpty;
           return Container(
             width: width,
-            height: 24,
+            height: hasEffect ? 38 : 24,
             margin: const EdgeInsets.only(bottom: 2),
             color: bg,
             alignment: Alignment.center,
-            child: Text(
-              b.text.toUpperCase(),
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w900,
-                color: contrastTextColor(bg),
-                letterSpacing: 1,
-              ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  b.text.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    color: fg,
+                    letterSpacing: 1,
+                  ),
+                ),
+                if (hasEffect)
+                  Text(
+                    b.effect,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: fg.withOpacity(0.9),
+                    ),
+                  ),
+              ],
             ),
           );
         }).toList(),

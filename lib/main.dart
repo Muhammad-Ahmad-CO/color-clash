@@ -17,6 +17,11 @@ import 'widgets/dot_chrome.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  // Fullscreen: hide the Android system buttons (back/home/recent) from
+  // the moment the app opens; immersiveSticky brings them back only on
+  // an edge swipe, then auto-hides them again. The game screen re-asserts
+  // this on open and on resume.
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   runApp(const ColorCoverApp());
 }
 

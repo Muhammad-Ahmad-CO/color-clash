@@ -17,11 +17,14 @@ class PowerUpOnField {
 }
 
 /// One stacked power-up banner (reference: newest on top, ~2-4 s visible).
+/// [effect] is the one-line "what it does" shown under the name; empty
+/// for banners that have no effect line (e.g. CHAOS, eliminations).
 class MatchBanner {
-  MatchBanner(this.player, this.text, this.until);
+  MatchBanner(this.player, this.text, this.until, [this.effect = '']);
   final int player;
   final String text;
   final double until;
+  final String effect;
 }
 
 class BallState {
@@ -364,13 +367,26 @@ class GameEngine {
       _setTile(tileIndex(c, rr), player);
     }
     ultimateMeters[player] = 0;
-    _showBanner(player, 'COLOR TSUNAMI!');
+    _showBanner(player, 'COLOR TSUNAMI!', 'Whole row turns your colour');
     return true;
   }
 
-  void _showBanner(int player, String text) {
-    banners.add(MatchBanner(player, text, time + 3));
+  void _showBanner(int player, String text, [String effect = '']) {
+    banners.add(MatchBanner(player, text, time + 3, effect));
     if (banners.length > 4) banners.removeAt(0);
+  }
+
+  /// Does the ball's disc overlap tile (col, row)? The ball radius is
+  /// 0.375 tiles, so a ball rolling over the EDGE of a tile overlaps it
+  /// long before its centre rounds onto it — the old centre-only check
+  /// missed those pickups even though the tile was visibly touched.
+  bool _ballOverlapsTile(BallState b, int col, int row) {
+    final r = _ballRadius(b);
+    final dx = (b.x - (col + 0.5)).abs() - 0.5;
+    final dy = (b.y - (row + 0.5)).abs() - 0.5;
+    final ox = dx > 0 ? dx : 0;
+    final oy = dy > 0 ? dy : 0;
+    return ox * ox + oy * oy < r * r;
   }
 
   void _placeGoldenTile() {
@@ -400,7 +416,7 @@ class GameEngine {
 
   void _applyPowerUp(BallState b, PowerUpDef def) {
     powerUpsCollected[b.player]++;
-    _showBanner(b.player, def.name);
+    _showBanner(b.player, def.name, def.effect);
     switch (def.id) {
       case 'speed':
         b.speedUntil = time + 10;
@@ -724,24 +740,24 @@ class GameEngine {
       _paintAround(b);
 
       // Golden Tile: first ball to touch it gets double paint for 10s.
+      // Overlap, not centre-only — same fix as power-up pickup.
       if (goldenEnabled && goldenVisible) {
-        final cc = b.x.round();
-        final rr = b.y.round();
-        if (cc == goldenCol && rr == goldenRow) {
+        if (_ballOverlapsTile(b, goldenCol, goldenRow)) {
           goldenVisible = false;
           _goldenRespawnAt = time + 20;
           b.doublePaintUntil = time + 10;
-          _showBanner(b.player, 'GOLDEN TILE! DOUBLE PAINT!');
+          _showBanner(b.player, 'GOLDEN TILE!', 'Double paint for 10 seconds');
         }
       }
 
-      final cc = b.x.round().clamp(0, cols - 1);
-      final rr = b.y.round().clamp(0, rows - 1);
-      final hit = powerUps.indexWhere((p) => p.col == cc && p.row == rr);
-      if (hit >= 0) {
-        final def = powerUps[hit].def;
-        powerUps.removeAt(hit);
-        _applyPowerUp(b, def);
+      // Power-up pickup: collect every power-up tile the ball's disc
+      // overlaps (a ball can graze two adjacent tiles in one frame).
+      for (var i = powerUps.length - 1; i >= 0; i--) {
+        final p = powerUps[i];
+        if (_ballOverlapsTile(b, p.col, p.row)) {
+          powerUps.removeAt(i);
+          _applyPowerUp(b, p.def);
+        }
       }
     }
 

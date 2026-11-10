@@ -3,6 +3,7 @@
 // muted body text, off-white power-up rows. Back only — no bottom nav.
 import 'package:flutter/material.dart';
 import '../data/game_data.dart';
+import '../game/match_theme.dart';
 import '../widgets/ball_painter.dart';
 import '../widgets/dot_chrome.dart';
 
@@ -30,7 +31,7 @@ class HowToPlayScreen extends StatelessWidget {
               _Step('3', 'Paint the arena',
                   'Wherever your ball goes, the tiles change to your colour. Take tiles from other players by driving over them. The player with the most tiles at the end wins.'),
               _Step('4', 'Grab power-ups',
-                  'A power-up tile appears every 6 seconds (maximum 3 on the field). Drive over it to use it. A banner with its name shows above the arena for a few seconds.'),
+                  'A power-up tile appears every 6 seconds (maximum 3 on the field). Drive over it to use it — any part of your ball touching the tile collects it. A banner with its name and what it does shows above the arena for a few seconds. Each power-up has its own colour and icon, and a coloured ring + badge on your ball shows the buff while it runs.'),
               _Step('5', 'Win in 90 seconds',
                   'The match lasts 90 seconds. When time is up, the player with the biggest area wins — the end card shows "<NAME> DOMINATES!" right on the arena.'),
               SizedBox(height: 16),
@@ -121,6 +122,10 @@ class _PowerUpList extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: kPowerUps.map((p) {
+        // Legend matches the field exactly: the box uses the power-up's
+        // own tile colour, and the icon is drawn big (30 px in a 44 px
+        // box) in high-contrast colour.
+        final bg = Color(p.value);
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: DcCard(
@@ -129,15 +134,16 @@ class _PowerUpList extends StatelessWidget {
             child: Row(
               children: [
                 Container(
-                  width: 34,
-                  height: 34,
+                  width: 44,
+                  height: 44,
                   alignment: Alignment.center,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFF5DA69),
-                    borderRadius: BorderRadius.all(Radius.circular(8)),
+                  decoration: BoxDecoration(
+                    color: bg,
+                    borderRadius:
+                        const BorderRadius.all(Radius.circular(8)),
                   ),
                   child: PowerUpIconWidget(
-                      def: p, color: const Color(0xFF230040), size: 22),
+                      def: p, color: contrastTextColor(bg), size: 30),
                 ),
                 const SizedBox(width: 12),
                 Expanded(

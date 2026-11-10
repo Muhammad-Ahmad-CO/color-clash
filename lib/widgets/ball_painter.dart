@@ -318,7 +318,8 @@ void drawBallShape(
 }
 
 /// Draw a power-up's icon glyph inside [rect] with [glyph] colour.
-/// Icons are drawn paths — never letters (reference §5).
+/// Icons are drawn paths — never letters (reference §5). Strokes are thick
+/// (min ~3 px at tile scale) so each icon still reads at 35 px on a phone.
 void drawPowerUpIcon(Canvas canvas, String id, Rect rect, Color glyph) {
   final fill = Paint()
     ..color = glyph
@@ -326,7 +327,7 @@ void drawPowerUpIcon(Canvas canvas, String id, Rect rect, Color glyph) {
   final stroke = Paint()
     ..color = glyph
     ..style = PaintingStyle.stroke
-    ..strokeWidth = max(2, rect.height * 0.09)
+    ..strokeWidth = max(3, rect.height * 0.12)
     ..strokeCap = StrokeCap.round;
 
   Path bolt() {
@@ -426,6 +427,8 @@ void drawPowerUpIcon(Canvas canvas, String id, Rect rect, Color glyph) {
       canvas.drawPath(ghost(), fill);
       break;
     case 'blackhole':
+      // Solid disc + outer ring: reads as a bright disc with a halo
+      // (the tile behind it is near-black, so the glyph is light).
       canvas.drawCircle(rect.center, rect.width * 0.3, fill);
       canvas.drawCircle(
           rect.center,
@@ -433,7 +436,7 @@ void drawPowerUpIcon(Canvas canvas, String id, Rect rect, Color glyph) {
           Paint()
             ..color = glyph
             ..style = PaintingStyle.stroke
-            ..strokeWidth = max(2, rect.height * 0.08));
+            ..strokeWidth = max(3, rect.height * 0.12));
       break;
     case 'tidal':
       for (var i = 0; i < 3; i++) {
@@ -448,16 +451,20 @@ void drawPowerUpIcon(Canvas canvas, String id, Rect rect, Color glyph) {
       }
       break;
     case 'wormhole':
+      // Hollow ring + small centre dot — no solid disc, so it can never
+      // be mistaken for the black hole's filled disc.
       canvas.drawCircle(
           rect.center,
           rect.width * 0.42,
           Paint()
             ..color = glyph
             ..style = PaintingStyle.stroke
-            ..strokeWidth = max(2, rect.height * 0.09));
+            ..strokeWidth = max(3, rect.height * 0.12));
       canvas.drawCircle(rect.center, rect.width * 0.18, fill);
       break;
     case 'bomb':
+      // Round body + fuse + a BIG spark dot (the old spark was 2 px and
+      // vanished at tile size).
       canvas.drawCircle(
           Offset(rect.center.dx, rect.top + rect.height * 0.62),
           rect.width * 0.32,
@@ -468,7 +475,7 @@ void drawPowerUpIcon(Canvas canvas, String id, Rect rect, Color glyph) {
           stroke);
       canvas.drawCircle(
           Offset(rect.center.dx + rect.width * 0.38, rect.top + rect.height * 0.08),
-          max(2, rect.width * 0.07),
+          max(3, rect.width * 0.1),
           fill);
       break;
     case 'freeze':
@@ -495,7 +502,7 @@ void drawPowerUpIcon(Canvas canvas, String id, Rect rect, Color glyph) {
           Paint()
             ..color = glyph
             ..style = PaintingStyle.stroke
-            ..strokeWidth = max(2.5, rect.height * 0.16)
+            ..strokeWidth = max(3, rect.height * 0.18)
             ..strokeCap = StrokeCap.round);
       canvas.drawLine(
           Offset(rect.left + rect.width * 0.12, rect.top + rect.height * 0.46),
@@ -667,6 +674,22 @@ class ArenaPainter extends CustomPainter {
     return _tileColor(owner);
   }
 
+  /// The active timed buff to show on a ball, by priority: freeze first
+  /// (it stops the ball entirely), then the paint/speed buffs. Returns
+  /// the power-up id, or null when no buff needs a marker. Nitro (gold
+  /// streak), Colossus (giant ball + ghost trail) and Black Hole (disc +
+  /// debris) already have their own visuals, so they need no ring.
+  String? _activeBuff(BallState b) {
+    if (engine.frozenUntil[b.player] > engine.time) return 'freeze';
+    if (b.speedUntil > engine.time) return 'speed';
+    if (b.wreckingUntil > engine.time) return 'wrecking';
+    if (engine.fortifyUntil[b.player] > engine.time) return 'fortify';
+    if (b.infiltratorUntil > engine.time) return 'infiltrator';
+    if (b.magnetUntil > engine.time) return 'magnet';
+    if (b.ghostUntil > engine.time) return 'ghost';
+    return null;
+  }
+
   void _drawPlus(Canvas canvas, Offset center, double size, Color color) {
     final p = Paint()
       ..color = color
@@ -682,10 +705,6 @@ class ArenaPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final tileW = size.width / engine.cols;
     final tileH = size.height / engine.rows;
-    final territoryColors =
-        players.map((p) => Color(p.colour.value)).toList();
-    final accent = powerUpTileColor(territoryColors);
-    final glyphColor = powerUpGlyphColor(accent);
 
     // Tiles: flat per-tile fill only. Dead/outside tiles are left
     // transparent so the animated gradient shows through.
@@ -743,16 +762,19 @@ class ArenaPainter extends CustomPainter {
           Paint()..color = const Color(0xFF1A0A00));
     }
 
-    // Power-up tiles: solid bright square + drawn icon glyph.
+    // Power-up tiles: solid square in the power-up's OWN colour + drawn
+    // icon glyph in high-contrast colour (never a letter). The icon fills
+    // 80% of the tile so each power-up reads at a glance on a phone.
     for (final p in engine.powerUps) {
+      final tileColor = Color(p.def.value);
       final rect = Rect.fromLTWH(p.col * tileW, p.row * tileH, tileW, tileH);
-      canvas.drawRect(rect, Paint()..color = accent);
+      canvas.drawRect(rect, Paint()..color = tileColor);
       final iconRect = Rect.fromLTWH(
-          p.col * tileW + tileW * 0.2,
-          p.row * tileH + tileH * 0.2,
-          tileW * 0.6,
-          tileH * 0.6);
-      drawPowerUpIcon(canvas, p.def.id, iconRect, glyphColor);
+          p.col * tileW + tileW * 0.1,
+          p.row * tileH + tileH * 0.1,
+          tileW * 0.8,
+          tileH * 0.8);
+      drawPowerUpIcon(canvas, p.def.id, iconRect, contrastTextColor(tileColor));
     }
 
     // Balls.
@@ -837,6 +859,46 @@ class ArenaPainter extends CustomPainter {
           radius,
           Paint()..color = Colors.white.withOpacity(0.25),
         );
+      }
+      // Frozen ball: ice-blue overlay so the freeze is obvious — a frozen
+      // ball does not move, paint or pick up anything.
+      if (engine.frozenUntil[b.player] > engine.time) {
+        canvas.drawCircle(
+          center,
+          radius,
+          Paint()..color = const Color(0xFFB3E5FC).withOpacity(0.55),
+        );
+      }
+      // Active timed buff: a ring around the ball + a small icon badge
+      // above it, both in the power-up's own colour, so any player can
+      // tell at a glance which buff is running.
+      final buff = _activeBuff(b);
+      if (buff != null) {
+        final buffColor = Color(powerUpById(buff).value);
+        final ringR = radius + max(3, tileW * 0.12);
+        canvas.drawCircle(
+          center,
+          ringR,
+          Paint()
+            ..color = buffColor
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = max(3, tileW * 0.1),
+        );
+        final badgeR = tileW * 0.34;
+        // Clamped inside the arena so the badge never clips off an edge.
+        // (.toDouble() because num.clamp returns num, not double.)
+        final badgeCenter = Offset(
+          center.dx.clamp(badgeR + 2, size.width - badgeR - 2).toDouble(),
+          (center.dy - ringR - badgeR - 2)
+              .clamp(badgeR + 2, size.height - badgeR - 2)
+              .toDouble(),
+        );
+        canvas.drawCircle(badgeCenter, badgeR, Paint()..color = buffColor);
+        drawPowerUpIcon(
+            canvas,
+            buff,
+            Rect.fromCircle(center: badgeCenter, radius: badgeR * 0.7),
+            contrastTextColor(buffColor));
       }
     }
   }
