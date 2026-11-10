@@ -10,6 +10,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import '../data/game_data.dart';
 import '../game/engine.dart';
+import '../game/juice.dart';
 import '../game/match_theme.dart';
 
 /// A 5-point (or N-point) star path centred at [center].
@@ -731,11 +732,17 @@ class _ArenaShapePreviewPainter extends CustomPainter {
 /// Paints the whole arena: flat tiles, power-ups, balls. No grid lines,
 /// no arena background, no border, no radius — the reference look.
 class ArenaPainter extends CustomPainter {
-  ArenaPainter(this.engine, this.players, this.now, {this.trail = TrailType.none});
+  ArenaPainter(this.engine, this.players, this.now,
+      {this.trail = TrailType.none, this.interpAlpha = 1.0});
   final GameEngine engine;
   final List<PlayerConfig> players;
   final double now; // engine.time, drives the "+" marks
   final TrailType trail;
+  /// Render-interpolation fraction (0..1 within the fixed step): the
+  /// ball is drawn lerped between its previous and current sim
+  /// position, so it glides smoothly when the display rate != 60 Hz.
+  /// 1.0 = exactly the current sim position.
+  final double interpAlpha;
 
   Color _tileColor(int owner) => Color(players[owner].colour.value);
 
@@ -916,7 +923,9 @@ class ArenaPainter extends CustomPainter {
       } else if (trail == TrailType.golden) {
         color = const Color(0xFFFFCA28);
       }
-      final center = Offset(b.x * tileW, b.y * tileH);
+      final ix = b.prevX + (b.x - b.prevX) * interpAlpha;
+      final iy = b.prevY + (b.y - b.prevY) * interpAlpha;
+      final center = Offset(ix * tileW, iy * tileH);
       final isNitro = b.nitroUntil > engine.time;
       final isColossus = b.colossusUntil > engine.time;
       final isBlackHole = b.blackHoleUntil > engine.time;
@@ -985,14 +994,40 @@ class ArenaPainter extends CustomPainter {
         ),
         Paint()..color = Colors.black.withOpacity(0.2),
       );
-      drawBallShape(
-        canvas,
-        cfg.shape,
-        center,
-        radius,
-        color,
-        cutColor: _tileColorAt(b.x, b.y),
-      );
+      // Squash & stretch (v3.8): for 0.18 s after a wall bounce or a
+      // pickup the ball squashes along the impact axis and springs back
+      // with a BACK-ease overshoot, then rests at scale 1. The shadow
+      // and overlays stay circular — only the ball shape itself pops.
+      final squashT = (b.squashUntil - engine.time) / 0.18;
+      if (squashT > 0 && squashT <= 1) {
+        final e = easeOutBack(1 - squashT);
+        final along = 0.7 + 0.3 * e;
+        final cross = 1.3 - 0.3 * e;
+        canvas.save();
+        canvas.translate(center.dx, center.dy);
+        canvas.rotate(b.squashAxis);
+        canvas.scale(along, cross);
+        canvas.rotate(-b.squashAxis);
+        canvas.translate(-center.dx, -center.dy);
+        drawBallShape(
+          canvas,
+          cfg.shape,
+          center,
+          radius,
+          color,
+          cutColor: _tileColorAt(b.x, b.y),
+        );
+        canvas.restore();
+      } else {
+        drawBallShape(
+          canvas,
+          cfg.shape,
+          center,
+          radius,
+          color,
+          cutColor: _tileColorAt(b.x, b.y),
+        );
+      }
       // Ghost balls look see-through.
       if (b.ghostUntil > engine.time) {
         canvas.drawCircle(
@@ -1041,6 +1076,18 @@ class ArenaPainter extends CustomPainter {
             Rect.fromCircle(center: badgeCenter, radius: badgeR * 0.7),
             contrastTextColor(buffColor));
       }
+    }
+
+    // Juice particles (v3.8): short-lived coloured specks from
+    // conversions, pickups, bombs and tsunamis. Alpha fades with
+    // remaining life; size shrinks with it.
+    for (final p in engine.particles) {
+      final a = (p.life / p.maxLife).clamp(0.0, 1.0);
+      canvas.drawCircle(
+        Offset(p.x * tileW, p.y * tileH),
+        max(1.0, p.size * tileW * (0.5 + 0.5 * a)),
+        Paint()..color = Color(p.color).withOpacity(a),
+      );
     }
   }
 

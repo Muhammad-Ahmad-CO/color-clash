@@ -10,6 +10,7 @@
 // All Chaos enables 1-5.
 import 'dart:math';
 import '../data/game_data.dart';
+import 'juice.dart';
 import 'match_theme.dart';
 
 class PowerUpOnField {
@@ -42,6 +43,8 @@ class BallState {
       this.angleOffset = 0})
       : lastValidX = x,
         lastValidY = y,
+        prevX = x,
+        prevY = y,
         teleX = x,
         teleY = y;
   final int player;
@@ -82,6 +85,17 @@ class BallState {
   double teleX;
   double teleY;
   double teleportedAt = -1000;
+  /// Render interpolation: position at the previous fixed step. The
+  /// painter lerps prev -> current by the frame fraction, so the ball
+  /// glides smoothly even when the display rate != the 60 Hz sim rate.
+  /// Reset on teleports/spawns, or the ball would smear across the arena.
+  double prevX;
+  double prevY;
+  /// Squash & stretch: engine time until the pop ends + the squash axis
+  /// (radians, the wall normal on a bounce, the travel direction on a
+  /// pickup). The painter eases it back with a BACK overshoot.
+  double squashUntil = 0;
+  double squashAxis = 0;
   /// Wall-bounce sound throttle: one counted bounce per 0.5 s per ball,
   /// so pressing the border is one sustained bounce, not 60/s.
   double lastWallBounceAt = -1000;
@@ -169,6 +183,31 @@ class GameEngine {
   /// Golden Tiles collected this match (for the pickup sound: the
   /// Golden Tile does not increment powerUpsCollected).
   int goldenPickups = 0;
+
+  /// Juice particles (visual only, capped at [maxParticles]). Spawned at
+  /// conversions, pickups, bombs and tsunamis; updated in step() and
+  /// drawn by the painter. They never touch the simulation.
+  final List<Particle> particles = <Particle>[];
+  static const int maxParticles = 120;
+
+  /// Big-event counter (Bomb explosions + Colour Tsunamis). The screen
+  /// diffs this for the large feedback tier (shake + hit-stop + flash).
+  int bigEventCount = 0;
+
+  /// Spawn a burst of [count] particles at tile coords ([cx], [cy]).
+  /// Directions are random, speeds vary 0.4x–1.2x of [speed], life
+  /// 0.35–0.6 s. Silently stops at the particle budget — juice must
+  /// never grow unbounded.
+  void spawnBurst(double cx, double cy, int color, int count, double speed) {
+    for (var i = 0; i < count; i++) {
+      if (particles.length >= maxParticles) return;
+      final a = _rng.nextDouble() * 2 * pi;
+      final v = speed * (0.4 + _rng.nextDouble() * 0.8);
+      final life = 0.35 + _rng.nextDouble() * 0.25;
+      particles.add(Particle(cx, cy, cos(a) * v, sin(a) * v, life, life,
+          color, 0.06 + _rng.nextDouble() * 0.06));
+    }
+  }
 
   double time = 0;
   late double timeLeft;
@@ -413,7 +452,11 @@ class GameEngine {
       if (config.botDifficulty == BotDifficulty.easy) s *= 0.85;
       if (config.botDifficulty == BotDifficulty.crazy) s *= 1.2;
     }
-    return s;
+    // SPEED CAP (physics-tuning): 12 tiles/s is 0.2 tiles per 60 Hz
+    // step — far under one tile, so the per-axis wall check can never be
+    // tunnelled through a 1-tile wall (the axis-separated move is the
+    // CCD equivalent here: a step never skips a tile).
+    return s.clamp(0, 12.0);
   }
 
   double _ballRadius(BallState b) => b.colossusUntil > time ? 2.2 : 0.375;
@@ -554,6 +597,10 @@ class GameEngine {
       } else {
         b.angle = -b.angle;
       }
+      // Squash & stretch: the ball squashes along the wall normal and
+      // springs back with a BACK-ease overshoot (painter-side, 0.18 s).
+      b.squashUntil = time + 0.18;
+      b.squashAxis = isX ? 0 : pi / 2;
       // One counted bounce per 0.5 s per ball: a head-on press is one
       // sustained bounce, not 60/s (the screen already throttles the
       // sound to 80 ms, this keeps the counter itself sane).
@@ -641,7 +688,15 @@ class GameEngine {
       }
     }
     for (final idx in candidates) {
-      if (_setTile(idx, b.player) && ultimateEnabled) {
+      if (!_setTile(idx, b.player)) continue;
+      // Conversion puff: 2 tiny specks in the player's colour. Capped
+      // by the particle budget — pressing the border converts ~3 tiles/s
+      // per ball, so only a handful are ever alive at once.
+      if (particles.length < 60) {
+        spawnBurst(idx % cols + 0.5, idx ~/ cols + 0.5,
+            players[b.player].colour.value, 2, 1.2);
+      }
+      if (ultimateEnabled) {
         ultimateMeters[b.player] =
             (ultimateMeters[b.player] + (b.doublePaintUntil > time ? 6 : 3)).clamp(0, 100);
       }
@@ -678,6 +733,10 @@ class GameEngine {
       _setTile(tileIndex(c, rr), player);
     }
     ultimateMeters[player] = 0;
+    // Big-event juice (see _explodeBomb): burst + counter for the
+    // screen's large tier.
+    bigEventCount++;
+    spawnBurst(ball.x, ball.y, players[player].colour.value, 20, 3.5);
     _showBanner(player, 'COLOR TSUNAMI!', 'Whole row turns your colour');
     return true;
   }
@@ -713,6 +772,10 @@ class GameEngine {
   void _explodeBomb(BallState b) {
     final cc = b.x.round();
     final rr = b.y.round();
+    // Big-event juice: the screen diffs bigEventCount for the large
+    // tier (shake + hit-stop + flash); the burst is the visual.
+    bigEventCount++;
+    spawnBurst(cc + 0.5, rr + 0.5, 0xFFFF6D00, 24, 3.0);
     for (var dr = -2; dr <= 2; dr++) {
       for (var dc = -2; dc <= 2; dc++) {
         final c = cc + dc;
@@ -741,6 +804,11 @@ class GameEngine {
   void _applyPowerUp(BallState b, PowerUpDef def) {
     powerUpsCollected[b.player]++;
     _showBanner(b.player, def.name, def.effect);
+    // Pickup pop: squash along the travel direction + a burst in the
+    // power-up's own colour. The screen adds shake + hit-stop.
+    b.squashUntil = time + 0.18;
+    b.squashAxis = b.angle;
+    spawnBurst(b.x, b.y, def.value, 10, 2.5);
     switch (def.id) {
       case 'speed':
         b.speedUntil = time + 10;
@@ -910,6 +978,10 @@ class GameEngine {
         }
         b.teleported = true;
         b.trail.clear();
+        // Render interpolation: reset the previous position, or the
+        // painter would smear the ball from the old spot to the new one.
+        b.prevX = b.x;
+        b.prevY = b.y;
         wormholeTiles.clear();
         final bx = (b.x.round() - 1).clamp(0, cols - 2);
         final by = (b.y.round() - 2).clamp(0, rows - 4);
@@ -1003,90 +1075,205 @@ class GameEngine {
     return d;
   }
 
-  void _botSteer(BallState b) {
-    // Simple AI: aim at the nearest power-up, else the nearest BORDER
-    // tile (an enemy tile touching our own territory).
-    double tx = b.x;
-    double ty = b.y;
-    if (powerUps.isNotEmpty) {
-      var best = 1e9;
-      for (final p in powerUps) {
-        // Aim at the tile CENTRE, not its corner: the ball presses
-        // the middle of the tile it wants (wall rule — a corner aim
-        // slides it along the border instead of into the tile).
-        final d = (p.col + 0.5 - b.x) * (p.col + 0.5 - b.x) +
-            (p.row + 0.5 - b.y) * (p.row + 0.5 - b.y);
-        if (d < best) {
-          best = d;
-          tx = p.col + 0.5;
-          ty = p.row + 0.5;
+  /// Bot decision state (VS COMPUTER, player 1): utility-based target
+  /// choice, re-decided on a per-difficulty timer — never every frame
+  /// (game-ai: recompute sparingly). Steering follows the stored target
+  /// each frame; TRINITY extras add their own angleOffset on top.
+  double _botTargetX = 0;
+  double _botTargetY = 0;
+  double _botAimError = 0; // radians, re-rolled each decision
+  double _botNextDecisionAt = -1;
+
+  /// How often the bot re-decides (seconds): Easy is slow and sloppy,
+  /// Crazy is near-instant. The decision interval IS the reaction delay.
+  double _botDecisionInterval() {
+    if (config.botDifficulty == BotDifficulty.easy) return 0.5;
+    if (config.botDifficulty == BotDifficulty.crazy) return 0.12;
+    return 0.25;
+  }
+
+  /// Aim error re-rolled per decision (radians): Easy wanders ±0.5,
+  /// Medium ±0.2, Crazy ±0.05. The error moves the TARGET, never the
+  /// angle — a per-ball kick to b.angle would erase the TRINITY spread.
+  double _botAimErrorRange() {
+    if (config.botDifficulty == BotDifficulty.easy) return 0.5;
+    if (config.botDifficulty == BotDifficulty.crazy) return 0.05;
+    return 0.2;
+  }
+
+  /// Steering turn rate per frame fraction: Easy turns slowly, Medium
+  /// turns firmly, Crazy snaps (1.0 = instant). Uses _angleDelta, so a
+  /// westward turn never spins the long way around through east (the
+  /// v3.7 angle-wrap stall fix — do not regress it).
+  double _botTurnRate() {
+    if (config.botDifficulty == BotDifficulty.easy) return 0.05;
+    if (config.botDifficulty == BotDifficulty.crazy) return 1.0;
+    return 0.2;
+  }
+
+  /// Power-up value for the utility score: game-changing powers are
+  /// worth travelling for, small buffs are not.
+  double _powerUpValue(String id) {
+    switch (id) {
+      case 'bomb':
+        return 14;
+      case 'trinity':
+        return 12;
+      case 'tidal':
+        return 11;
+      case 'turret':
+        return 11;
+      case 'colossus':
+        return 10;
+      case 'infiltrator':
+        return 10;
+      case 'blackhole':
+        return 9;
+      case 'wrecking':
+        return 9;
+      case 'freeze':
+        return 8;
+      case 'nitro':
+        return 7;
+      case 'wormhole':
+        return 7;
+      case 'speed':
+        return 6;
+      case 'magnet':
+        return 6;
+      case 'ghost':
+        return 5;
+      case 'fortify':
+        return 5;
+      default:
+        return 5;
+    }
+  }
+
+  /// UTILITY DECISION (game-ai): score every option, take the best.
+  /// (a) Border tiles to push: 10 - distance, + a defence bonus when an
+  /// enemy ball is pressing that tile (6 - 1.5 * enemy distance).
+  /// (b) Power-ups by value minus 0.8 * distance, so a far power-up
+  /// loses to a near border tile. (c) No border tile at all (owns
+  /// nothing): fall back to the nearest enemy tile (mercy case).
+  void _botDecide(BallState b) {
+    var found = false;
+    var bestScore = -1e9;
+    var tx = b.x;
+    var ty = b.y;
+    // Threats: live balls whose team is not the bot's.
+    final threats = <BallState>[];
+    for (final o in balls) {
+      if (teamOf(o.player) != teamOf(b.player)) threats.add(o);
+    }
+    for (var r = 0; r < rows; r++) {
+      for (var c = 0; c < cols; c++) {
+        if (!isPlayableTile(c, r)) continue;
+        final owner = grid[tileIndex(c, r)];
+        if (owner < 0 || teamOf(owner) == teamOf(b.player)) continue;
+        if (fortifyUntil[owner] > time) continue;
+        if (!_touchesOwnTerritory(c, r, b.player)) continue;
+        final dx = c + 0.5 - b.x;
+        final dy = r + 0.5 - b.y;
+        final d = sqrt(dx * dx + dy * dy);
+        var score = 10 - d;
+        // Defence: an enemy ball pressing this tile makes it urgent.
+        for (final t in threats) {
+          final edx = c + 0.5 - t.x;
+          final edy = r + 0.5 - t.y;
+          final ed = sqrt(edx * edx + edy * edy);
+          if (ed < 4) score += 6 - 1.5 * ed;
+        }
+        if (score > bestScore) {
+          bestScore = score;
+          tx = c + 0.5;
+          ty = r + 0.5;
+          found = true;
         }
       }
-    } else {
-      // BORDER-PUSH: aim at the nearest BORDER tile — an enemy tile
-      // touching our own territory. Aiming at a deep enemy tile would
-      // paint nothing, because balls only convert at the border.
-      // Fortified tiles are excluded: the bot could never paint them.
-      var found = false;
+    }
+    for (final p in powerUps) {
+      final dx = p.col + 0.5 - b.x;
+      final dy = p.row + 0.5 - b.y;
+      final score = _powerUpValue(p.def.id) - 0.8 * sqrt(dx * dx + dy * dy);
+      if (score > bestScore) {
+        bestScore = score;
+        tx = p.col + 0.5;
+        ty = p.row + 0.5;
+        found = true;
+      }
+    }
+    if (!found) {
+      // No border tile and no power-up (owns nothing — mercy case):
+      // nearest enemy tile so the bot still has a direction; the
+      // mercy rule lets it repaint from wherever it lands. Fortified
+      // tiles are excluded — pressing a fortified border forever
+      // would stall the bot.
       var best = 1e9;
       for (var r = 0; r < rows; r++) {
         for (var c = 0; c < cols; c++) {
-          if (!isPlayableTile(c, r)) continue;
+          if (!isPlayableTile(c, r) || grid[tileIndex(c, r)] == b.player) {
+            continue;
+          }
           final owner = grid[tileIndex(c, r)];
-          if (owner < 0 || teamOf(owner) == teamOf(b.player)) continue;
-          if (fortifyUntil[owner] > time) continue;
-          if (!_touchesOwnTerritory(c, r, b.player)) continue;
+          if (owner >= 0 && fortifyUntil[owner] > time) continue;
           final d = (c + 0.5 - b.x) * (c + 0.5 - b.x) +
               (r + 0.5 - b.y) * (r + 0.5 - b.y);
           if (d < best) {
             best = d;
             tx = c + 0.5;
             ty = r + 0.5;
-            found = true;
-          }
-        }
-      }
-      if (!found) {
-        // No border tile sampled (owns nothing — mercy case): fall
-        // back to the nearest enemy tile so the bot still has a
-        // direction; the mercy rule lets it repaint from wherever it
-        // lands. Fortified tiles are excluded here too — pressing a
-        // fortified border forever would stall the bot.
-        best = 1e9;
-        for (var r = 0; r < rows; r++) {
-          for (var c = 0; c < cols; c++) {
-            if (!isPlayableTile(c, r) || grid[tileIndex(c, r)] == b.player) continue;
-            final owner = grid[tileIndex(c, r)];
-            if (owner >= 0 && fortifyUntil[owner] > time) continue;
-            final d = (c + 0.5 - b.x) * (c + 0.5 - b.x) +
-                (r + 0.5 - b.y) * (r + 0.5 - b.y);
-            if (d < best) {
-              best = d;
-              tx = c + 0.5;
-              ty = r + 0.5;
-            }
           }
         }
       }
     }
+    _botTargetX = tx;
+    _botTargetY = ty;
+    _botAimError =
+        (_rng.nextDouble() * 2 - 1) * _botAimErrorRange();
+    _botNextDecisionAt = time + _botDecisionInterval();
+  }
+
+  void _botSteer(BallState b) {
+    // Decide on the difficulty's timer; steer toward the stored target
+    // every frame. _botDecide runs once per decision window (the first
+    // bot ball each step sets the timer, so TRINITY extras share it).
+    if (time >= _botNextDecisionAt) _botDecide(b);
     // TRINITY extras keep their ±40° spread: steer toward the target
     // plus the ball's own offset, so the three balls fan out instead
     // of travelling as one cluster.
-    var target = atan2(ty - b.y, tx - b.x) + b.angleOffset;
-    if (config.botDifficulty == BotDifficulty.easy) {
-      // Easy bot turns slowly and sometimes wanders. The wander moves
-      // the TARGET, never the angle — a per-ball kick to b.angle would
-      // erase the TRINITY spread.
-      if (_rng.nextDouble() < 0.01) target += _rng.nextDouble() - 0.5;
-      b.angle += _angleDelta(b.angle, target) * 0.05;
-    } else if (config.botDifficulty == BotDifficulty.crazy) {
+    final target = atan2(_botTargetY - b.y, _botTargetX - b.x) +
+        b.angleOffset +
+        _botAimError;
+    final rate = _botTurnRate();
+    if (rate >= 1.0) {
       b.angle = target;
     } else {
-      b.angle += _angleDelta(b.angle, target) * 0.2;
+      b.angle += _angleDelta(b.angle, target) * rate;
     }
   }
 
   void step(double dt) {
+    // Juice particles: visual only — drift, drag, die. Updated even
+    // after the match ends so a final burst settles under the end card.
+    for (var i = particles.length - 1; i >= 0; i--) {
+      final p = particles[i];
+      p.life -= dt;
+      if (p.life <= 0) {
+        particles.removeAt(i);
+        continue;
+      }
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      final drag = (1 - 3 * dt).clamp(0.0, 1.0);
+      p.vx *= drag;
+      p.vy *= drag;
+    }
+    // Render-interpolation snapshot: previous fixed-step positions.
+    for (final b in balls) {
+      b.prevX = b.x;
+      b.prevY = b.y;
+    }
     if (finished) return;
     // A hitch must never let one step jump a whole tile (tunnelling
     // through the border): cap dt at 1/30 s — at max speed the step
@@ -1360,21 +1547,29 @@ class GameEngine {
       if (b.x < minX) {
         b.x = minX;
         b.angle = pi - b.angle;
+        b.squashUntil = time + 0.18;
+        b.squashAxis = 0;
         bounceCount++;
       }
       if (b.x > maxX) {
         b.x = maxX;
         b.angle = pi - b.angle;
+        b.squashUntil = time + 0.18;
+        b.squashAxis = 0;
         bounceCount++;
       }
       if (b.y < minY) {
         b.y = minY;
         b.angle = -b.angle;
+        b.squashUntil = time + 0.18;
+        b.squashAxis = pi / 2;
         bounceCount++;
       }
       if (b.y > maxY) {
         b.y = maxY;
         b.angle = -b.angle;
+        b.squashUntil = time + 0.18;
+        b.squashAxis = pi / 2;
         bounceCount++;
       }
 
@@ -1391,6 +1586,9 @@ class GameEngine {
           goldenPickups++;
           _goldenRespawnAt = time + 20;
           b.doublePaintUntil = time + 10;
+          b.squashUntil = time + 0.18;
+          b.squashAxis = b.angle;
+          spawnBurst(goldenCol + 0.5, goldenRow + 0.5, 0xFFFFD700, 10, 2.5);
           _showBanner(b.player, 'GOLDEN TILE!', 'Double paint for 10 seconds');
         }
       }

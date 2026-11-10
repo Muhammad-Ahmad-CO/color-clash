@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 import '../data/game_data.dart';
 import '../game/coins.dart';
+import '../game/juice.dart';
 import '../game/sound.dart';
 import '../game/stats.dart';
 import '../widgets/dot_chrome.dart';
@@ -27,6 +28,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) setState(() {});
     });
     SoundFx.load().then((_) {
+      if (mounted) setState(() {});
+    });
+    JuiceSettings.load().then((_) {
       if (mounted) setState(() {});
     });
     // Stats (rank, streak, missions, spin, records) load once per
@@ -283,6 +287,26 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
                   Text(SoundFx.muted ? 'OFF' : 'ON',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700)),
+                ],
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text('Reduce shake: ',
+                      style:
+                          TextStyle(color: DcColors.muted, fontSize: 16)),
+                  Switch(
+                    value: JuiceSettings.reduceShake,
+                    activeColor: DcColors.gold,
+                    onChanged: (v) {
+                      JuiceSettings.setReduceShake(v);
+                      setState(() {});
+                    },
+                  ),
+                  Text(JuiceSettings.reduceShake ? 'ON' : 'OFF',
                       style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w700)),

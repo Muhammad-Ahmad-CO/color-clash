@@ -12,10 +12,12 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import '../data/game_data.dart';
 import '../game/coins.dart';
 import '../game/engine.dart';
+import '../game/juice.dart';
 import '../game/match_theme.dart';
 import '../game/sound.dart';
 import '../game/stats.dart';
@@ -33,9 +35,21 @@ class GameScreen extends StatefulWidget {
 }
 
 class _GameScreenState extends State<GameScreen>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   late GameEngine _engine;
-  Timer? _timer;
+  // Fixed-timestep loop (physics-tuning): a vsync Ticker feeds an
+  // accumulator; the engine steps at a fixed 1/60 s, at most 4 steps
+  // per frame, so the sim is frame-rate independent and a load hitch
+  // can never spiral. _interpAlpha is the leftover fraction for the
+  // painter's render interpolation. NOTE: the state uses
+  // TickerProviderStateMixin (not Single-) because the background
+  // AnimationController already owns one ticker — a second createTicker
+  // on Single- would assert.
+  Ticker? _ticker;
+  Duration? _lastTick;
+  double _accumulator = 0;
+  double _interpAlpha = 1.0;
+  static const double _fixedDt = 1 / 60;
   late AnimationController _bgCtrl;
   bool _paused = false;
   bool _showEnd = false;
@@ -58,6 +72,23 @@ class _GameScreenState extends State<GameScreen>
   int _lastPowerUpsTotal = 0;
   int _lastBounceCount = 0;
   DateTime _lastBounceSoundAt = DateTime.fromMillisecondsSinceEpoch(0);
+  // Game feel (v3.8): trauma-based shake, hit-stop, white flash.
+  // Trauma 0..1, decays 1.2/s; shake offset = trauma^2 * max offset,
+  // sin-driven (smooth, never a random per-frame jitter). Shake moves
+  // the arena WIDGET only — never the ball/body. Hit-stop slows the
+  // SIM via _timeScale and restores on a REAL-TIME Future.delayed, so
+  // it can never stall the game; only the newest call restores it.
+  // Input is never blocked: steering is set in the pointer listeners,
+  // independent of the loop.
+  double _trauma = 0;
+  double _shakeT = 0;
+  double _timeScale = 1.0;
+  int _hitStopId = 0;
+  DateTime _flashUntil = DateTime.fromMillisecondsSinceEpoch(0);
+  // Juice event baselines (reset in _newMatch like the sound ones).
+  int _lastTilesPaintedTotal = 0;
+  int _lastBigEventCount = 0;
+  DateTime _lastSmallShakeAt = DateTime.fromMillisecondsSinceEpoch(0);
   // End-card extras from the last recordMatch result.
   int _comboBonus = 0;
   int _bestCombo = 0;
@@ -78,6 +109,7 @@ class _GameScreenState extends State<GameScreen>
     _engine = GameEngine(widget.config);
     WidgetsBinding.instance.addObserver(this);
     _hideSystemBars();
+    JuiceSettings.load();
     _bgCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 14),
@@ -98,11 +130,107 @@ class _GameScreenState extends State<GameScreen>
   }
 
   void _startLoop() {
-    _timer?.cancel();
-    _timer = Timer.periodic(const Duration(milliseconds: 16), (_) {
-      if (_paused || !mounted) return;
-      setState(() {
-        _engine.step(0.016);
+    _ticker?.dispose();
+    _ticker = createTicker(_onTick);
+    _lastTick = null;
+    _accumulator = 0;
+    _interpAlpha = 1.0;
+    _ticker!.start();
+  }
+
+  /// Trauma-based screen shake (game-feel): hits ADD trauma, it decays
+  /// every frame; the offset is trauma^2 so small hits barely move and
+  /// big hits punch. Skipped entirely when Reduce Shake is on.
+  void _addTrauma(double amount) {
+    if (JuiceSettings.reduceShake) return;
+    _trauma = (_trauma + amount).clamp(0.0, 1.0);
+  }
+
+  Offset get _shakeOffset {
+    if (_trauma <= 0) return Offset.zero;
+    final s = _trauma * _trauma;
+    return Offset(12 * s * sin(_shakeT * 1.7), 8 * s * sin(_shakeT * 2.3));
+  }
+
+  /// Hit-stop (game-feel): slow the sim to [slow]x for [duration] REAL
+  /// seconds, then restore. The restore uses a real-time wait
+  /// (Future.delayed is unaffected by _timeScale) and only the newest
+  /// call restores, so overlapping hit-stops never cut each other short.
+  void _hitStop(double duration, double slow) {
+    _hitStopId++;
+    final id = _hitStopId;
+    _timeScale = slow;
+    Future.delayed(Duration(milliseconds: (duration * 1000).round()), () {
+      if (!mounted || id != _hitStopId) return;
+      _timeScale = 1.0;
+    });
+  }
+
+  /// Feedback bundles by importance tier (game-feel):
+  /// small = tile-conversion tick (shake 0.1, throttled to 0.3 s, no
+  /// hit-stop); medium = power-up pickup (shake 0.4 + hit-stop 0.05 s);
+  /// large = Bomb / Colour Tsunami / match win (shake 0.8 + hit-stop
+  /// 0.12 s + white flash 0.06 s). Never on routine actions.
+  void _feedbackSmall() {
+    final now = DateTime.now();
+    if (now.difference(_lastSmallShakeAt).inMilliseconds < 300) return;
+    _lastSmallShakeAt = now;
+    _addTrauma(0.1);
+  }
+
+  void _feedbackMedium() {
+    _addTrauma(0.4);
+    _hitStop(0.05, 0.05);
+  }
+
+  void _feedbackLarge() {
+    _addTrauma(0.8);
+    _hitStop(0.12, 0.05);
+    _flashUntil = DateTime.now().add(const Duration(milliseconds: 60));
+  }
+
+  void _onTick(Duration elapsed) {
+    if (!mounted) return;
+    // Real frame dt, clamped: a load hitch advances the sim by at most
+    // 0.1 s (no explosion after a stall), and the 4-step cap below
+    // drops any further backlog instead of spiralling.
+    final realDt = _lastTick == null
+        ? _fixedDt
+        : (elapsed - _lastTick!).inMicroseconds / 1e6;
+    _lastTick = elapsed;
+    if (_paused) return;
+    final clampedDt = realDt.clamp(0.0, 0.1);
+    // Trauma decays on REAL time, so shake settles even during hit-stop.
+    if (_trauma > 0) {
+      _trauma = max(0.0, _trauma - 1.2 * clampedDt);
+      _shakeT += clampedDt * 30;
+    }
+    if (!_engine.finished) {
+      _accumulator += clampedDt * _timeScale;
+      var steps = 0;
+      while (_accumulator >= _fixedDt && steps < 4) {
+        _engine.step(_fixedDt);
+        _accumulator -= _fixedDt;
+        steps++;
+      }
+      if (steps == 4) _accumulator = 0; // drop backlog, never spiral
+      _interpAlpha = (_accumulator / _fixedDt).clamp(0.0, 1.0);
+    }
+    setState(() {
+      _diffEvents();
+    });
+  }
+
+  /// Sounds + haptics + juice, diff-based: the engine only counts
+  /// events and this screen turns new counts into one response each.
+  void _diffEvents() {
+        // Small tier: tile conversions tick the shake (throttled).
+        final tilesTotal =
+            _engine.tilesPainted.fold<int>(0, (a, b) => a + b);
+        if (tilesTotal > _lastTilesPaintedTotal) {
+          _lastTilesPaintedTotal = tilesTotal;
+          _feedbackSmall();
+        }
         // Sounds + haptics, diff-based: the engine only counts events
         // (powerUpsCollected + goldenPickups, bounceCount) and this
         // screen turns new counts into one sound each. The TSUNAMI
@@ -114,6 +242,7 @@ class _GameScreenState extends State<GameScreen>
         if (powerUpsTotal > _lastPowerUpsTotal) {
           _lastPowerUpsTotal = powerUpsTotal;
           SoundFx.pickup();
+          _feedbackMedium();
           // HapticFeedback returns a Future: a plain try/catch around
           // the call cannot catch async platform errors (e.g. no
           // vibrator), so errors are swallowed on the Future.
@@ -127,8 +256,12 @@ class _GameScreenState extends State<GameScreen>
             SoundFx.bounce();
           }
         }
+        // Large tier: Bomb explosions and Colour Tsunamis.
+        if (_engine.bigEventCount > _lastBigEventCount) {
+          _lastBigEventCount = _engine.bigEventCount;
+          _feedbackLarge();
+        }
         if (_engine.finished && !_showEnd) {
-          _timer?.cancel();
           final gen = _matchGen;
           final winnerIdx = _engine.winnerIndex();
           final won = winnerIdx == 0 ||
@@ -136,6 +269,7 @@ class _GameScreenState extends State<GameScreen>
                   (winnerIdx == 0 || winnerIdx == 2));
           if (won) {
             SoundFx.win();
+            _feedbackLarge();
             unawaited(HapticFeedback.vibrate().catchError((_) {}));
           } else {
             SoundFx.lose();
@@ -214,8 +348,6 @@ class _GameScreenState extends State<GameScreen>
             });
           });
         }
-      });
-    });
   }
 
   /// Start a fresh match. NEXT MATCH keeps the series score (same
@@ -238,6 +370,15 @@ class _GameScreenState extends State<GameScreen>
       _lastPowerUpsTotal = 0;
       _lastBounceCount = 0;
       _lastBounceSoundAt = DateTime.fromMillisecondsSinceEpoch(0);
+      // Juice baselines restart too; a pending hit-stop restore from
+      // the old match is voided by bumping the id.
+      _lastTilesPaintedTotal = 0;
+      _lastBigEventCount = 0;
+      _lastSmallShakeAt = DateTime.fromMillisecondsSinceEpoch(0);
+      _trauma = 0;
+      _timeScale = 1.0;
+      _hitStopId++;
+      _flashUntil = DateTime.fromMillisecondsSinceEpoch(0);
       if (resetSeries) {
         _seriesScore = <int>[0, 0];
         _seriesDecided = false;
@@ -257,7 +398,7 @@ class _GameScreenState extends State<GameScreen>
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _ticker?.dispose();
     _bgCtrl.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -403,7 +544,13 @@ class _GameScreenState extends State<GameScreen>
       onPointerMove: _onPointerMove,
       onPointerUp: _onPointerUp,
       onPointerCancel: _onPointerCancel,
-      child: Container(
+      // Screen shake (game-feel): the Transform moves the arena WIDGET
+      // only — the ball/body simulation never moves. It sits inside the
+      // Listener, so hit-testing shifts with the visuals and the
+      // joystick stays glued to the finger.
+      child: Transform.translate(
+        offset: _shakeOffset,
+        child: Container(
         key: _arenaKey,
         width: arenaW,
         height: arenaH,
@@ -411,7 +558,7 @@ class _GameScreenState extends State<GameScreen>
           children: [
             CustomPaint(
               painter: ArenaPainter(_engine, widget.players, _engine.time,
-                  trail: widget.config.trail),
+                  trail: widget.config.trail, interpAlpha: _interpAlpha),
               size: Size(arenaW, arenaH),
             ),
             // Visible floating joysticks (one per active finger), drawn
@@ -421,6 +568,15 @@ class _GameScreenState extends State<GameScreen>
                   _pointers.values.toList(), _territoryColors),
               size: Size(arenaW, arenaH),
             ),
+            // White flash (large tier): a 0.06 s full-arena flash on
+            // Bomb / Tsunami / win. Real-time, fades by the ticker.
+            // Above the arena and joysticks, below the pause/end cards.
+            if (_flashUntil.isAfter(DateTime.now()))
+              const Positioned.fill(
+                child: IgnorePointer(
+                  child: ColoredBox(color: Colors.white54),
+                ),
+              ),
             if (_paused && !_showEnd) _PauseOverlay(
               onResume: () => setState(() => _paused = false),
               onQuit: () => Navigator.pushNamedAndRemoveUntil(
@@ -445,6 +601,7 @@ class _GameScreenState extends State<GameScreen>
                   context, '/home', (_) => false),
             ),
           ],
+        ),
         ),
       ),
     );
