@@ -50,6 +50,13 @@ class _GameScreenState extends State<GameScreen>
   // Best-of series (2 players / VS COMPUTER only): wins per player.
   List<int> _seriesScore = <int>[0, 0];
   bool _seriesDecided = false;
+  // Sound + haptic diff baselines: the engine only counts events, this
+  // screen turns new counts into sounds. Reset in _newMatch, or the
+  // first pickups of a new match would stay silent until the totals
+  // pass the previous match's.
+  int _lastPowerUpsTotal = 0;
+  int _lastBounceCount = 0;
+  DateTime _lastBounceSoundAt = DateTime.fromMillisecondsSinceEpoch(0);
   // End-card extras from the last recordMatch result.
   int _comboBonus = 0;
   int _bestCombo = 0;
@@ -95,14 +102,43 @@ class _GameScreenState extends State<GameScreen>
       if (_paused || !mounted) return;
       setState(() {
         _engine.step(0.016);
+        // Sounds + haptics, diff-based: the engine only counts events
+        // (powerUpsCollected + goldenPickups, bounceCount) and this
+        // screen turns new counts into one sound each. The TSUNAMI
+        // button plays its own pickup() and does not count, so there
+        // is no double-fire.
+        final powerUpsTotal =
+            _engine.powerUpsCollected.fold<int>(0, (a, b) => a + b) +
+                _engine.goldenPickups;
+        if (powerUpsTotal > _lastPowerUpsTotal) {
+          _lastPowerUpsTotal = powerUpsTotal;
+          SoundFx.pickup();
+          // HapticFeedback returns a Future: a plain try/catch around
+          // the call cannot catch async platform errors (e.g. no
+          // vibrator), so errors are swallowed on the Future.
+          unawaited(HapticFeedback.heavyImpact().catchError((_) {}));
+        }
+        if (_engine.bounceCount > _lastBounceCount) {
+          _lastBounceCount = _engine.bounceCount;
+          final now = DateTime.now();
+          if (now.difference(_lastBounceSoundAt).inMilliseconds >= 80) {
+            _lastBounceSoundAt = now;
+            SoundFx.bounce();
+          }
+        }
         if (_engine.finished && !_showEnd) {
           _timer?.cancel();
-          SoundFx.win();
           final gen = _matchGen;
           final winnerIdx = _engine.winnerIndex();
           final won = winnerIdx == 0 ||
               (widget.config.mode == GameMode.team2v2 &&
                   (winnerIdx == 0 || winnerIdx == 2));
+          if (won) {
+            SoundFx.win();
+            unawaited(HapticFeedback.vibrate().catchError((_) {}));
+          } else {
+            SoundFx.lose();
+          }
           // Series score is computed synchronously — the end card needs
           // it right away (bonuses arrive a moment later, async).
           setState(() {
@@ -197,6 +233,10 @@ class _GameScreenState extends State<GameScreen>
       _comboBonus = 0;
       _bestCombo = 0;
       _paused = false;
+      // Sound/haptic baselines restart with the match (see _startLoop).
+      _lastPowerUpsTotal = 0;
+      _lastBounceCount = 0;
+      _lastBounceSoundAt = DateTime.fromMillisecondsSinceEpoch(0);
       if (resetSeries) {
         _seriesScore = <int>[0, 0];
         _seriesDecided = false;

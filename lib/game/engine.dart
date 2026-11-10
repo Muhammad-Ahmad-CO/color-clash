@@ -31,11 +31,21 @@ class MatchBanner {
 }
 
 class BallState {
-  BallState({required this.player, required this.x, required this.y, required this.angle});
+  BallState(
+      {required this.player,
+      required this.x,
+      required this.y,
+      required this.angle,
+      this.angleOffset = 0});
   final int player;
   double x;
   double y;
   double angle;
+  /// TRINITY spread: a fixed ±40° offset from the player's steering
+  /// direction. Steering sets one angle per player, so without this the
+  /// three balls would travel as one cluster; with it they fan out.
+  /// 0 for originals; -0.7 / +0.7 for TRINITY extras.
+  final double angleOffset;
   double speedUntil = 0;
   double nitroUntil = 0;
   double wreckingUntil = 0;
@@ -123,6 +133,16 @@ class GameEngine {
 
   /// Live turrets (at most one per player). Painter reads this list.
   final List<Turret> turrets = <Turret>[];
+
+  /// Bounce events this match (wall bounces + ball-ball impulses).
+  /// The screen diffs this to play the bounce blip (throttled) — the
+  /// engine itself stays silent. Only real impulses count: the
+  /// already-separating / both-frozen / ghost paths add nothing.
+  int bounceCount = 0;
+
+  /// Golden Tiles collected this match (for the pickup sound: the
+  /// Golden Tile does not increment powerUpsCollected).
+  int goldenPickups = 0;
 
   double time = 0;
   late double timeLeft;
@@ -544,17 +564,24 @@ class GameEngine {
         // timer and tops up to 2 extras (never stacks to 4). Extras
         // inherit the collector's active timed buffs at spawn, so a
         // ghost collector's extras pass through balls too.
+        // Top-up spawns only the MISSING offsets: assigning by loop
+        // index would give a second -0.7 extra when the -0.7 one is
+        // the survivor, and the pair would travel together.
         final liveExtras = balls
             .where((e) => e.player == b.player && e.removeAt > time)
             .toList();
         for (final e in liveExtras) {
           e.removeAt = time + 10;
         }
-        final missing = 2 - liveExtras.length;
-        for (var i = 0; i < missing; i++) {
-          final spread = i == 0 ? -0.7 : 0.7; // ±40° from the collector.
+        final liveOffsets = liveExtras.map((e) => e.angleOffset).toSet();
+        for (final spread in [-0.7, 0.7]) {
+          if (liveOffsets.contains(spread)) continue;
           final extra = BallState(
-              player: b.player, x: b.x, y: b.y, angle: b.angle + spread);
+              player: b.player,
+              x: b.x,
+              y: b.y,
+              angle: b.angle + spread,
+              angleOffset: spread);
           extra.removeAt = time + 10;
           extra.speedUntil = b.speedUntil;
           extra.nitroUntil = b.nitroUntil;
@@ -698,11 +725,16 @@ class GameEngine {
         }
       }
     }
-    final target = atan2(ty - b.y, tx - b.x);
+    // TRINITY extras keep their ±40° spread: steer toward the target
+    // plus the ball's own offset, so the three balls fan out instead
+    // of travelling as one cluster.
+    var target = atan2(ty - b.y, tx - b.x) + b.angleOffset;
     if (config.botDifficulty == BotDifficulty.easy) {
-      // Easy bot turns slowly and sometimes wanders.
+      // Easy bot turns slowly and sometimes wanders. The wander moves
+      // the TARGET, never the angle — a per-ball kick to b.angle would
+      // erase the TRINITY spread.
+      if (_rng.nextDouble() < 0.01) target += _rng.nextDouble() - 0.5;
       b.angle += (target - b.angle) * 0.05;
-      if (_rng.nextDouble() < 0.01) b.angle += _rng.nextDouble() - 0.5;
     } else if (config.botDifficulty == BotDifficulty.crazy) {
       b.angle = target;
     } else {
@@ -896,7 +928,9 @@ class GameEngine {
 
       final steer = steering[b.player];
       if (steer != null && (steer.x.abs() > 0.2 || steer.y.abs() > 0.2)) {
-        final target = atan2(steer.y, steer.x);
+        // TRINITY extras keep their ±40° spread off the steered
+        // direction, so the three balls fan out instead of clustering.
+        final target = atan2(steer.y, steer.x) + b.angleOffset;
         if (iceUntil > time) {
           // Slippery ice: turn slowly.
           b.angle += (target - b.angle) * 0.12;
@@ -917,18 +951,22 @@ class GameEngine {
       if (b.x < minX) {
         b.x = minX;
         b.angle = pi - b.angle;
+        bounceCount++;
       }
       if (b.x > maxX) {
         b.x = maxX;
         b.angle = pi - b.angle;
+        bounceCount++;
       }
       if (b.y < minY) {
         b.y = minY;
         b.angle = -b.angle;
+        bounceCount++;
       }
       if (b.y > maxY) {
         b.y = maxY;
         b.angle = -b.angle;
+        bounceCount++;
       }
 
       b.trail.add(Point(b.x, b.y));
@@ -941,6 +979,7 @@ class GameEngine {
       if (goldenEnabled && goldenVisible) {
         if (_ballOverlapsTile(b, goldenCol, goldenRow)) {
           goldenVisible = false;
+          goldenPickups++;
           _goldenRespawnAt = time + 20;
           b.doublePaintUntil = time + 10;
           _showBanner(b.player, 'GOLDEN TILE!', 'Double paint for 10 seconds');
@@ -1014,18 +1053,25 @@ class GameEngine {
         if (aFrozen) {
           // c bounces off the frozen a.
           final vcn = vcx * nx + vcy * ny;
-          if (vcn < 0) c.angle = reflect(vcx, vcy, vcn);
+          if (vcn < 0) {
+            c.angle = reflect(vcx, vcy, vcn);
+            bounceCount++;
+          }
           continue;
         }
         if (cFrozen) {
           // a bounces off the frozen c.
           final van = vax * nx + vay * ny;
-          if (van > 0) a.angle = reflect(vax, vay, van);
+          if (van > 0) {
+            a.angle = reflect(vax, vay, van);
+            bounceCount++;
+          }
           continue;
         }
         // Both free: exchange the normal components.
         final vn = (vax - vcx) * nx + (vay - vcy) * ny;
         if (vn <= 0) continue; // already separating — no impulse.
+        bounceCount++;
         final nax = vax - vn * nx;
         final nay = vay - vn * ny;
         final ncx = vcx + vn * nx;

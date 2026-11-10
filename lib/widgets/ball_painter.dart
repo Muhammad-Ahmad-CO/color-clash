@@ -669,49 +669,61 @@ bool arenaShapeCellPlayable(ArenaShape shape, int c, int r, int cols, int rows) 
   }
 }
 
-/// Small widget that draws the real arena shape as a mini 18x24 grid
-/// (used in Setup's arena-shape picker). Playable tiles are filled with
-/// [color]; dead tiles stay transparent.
+/// Small widget that draws the real arena shape as a mini 18x24 arena
+/// (used in Setup's arena-shape picker): playable tiles in the
+/// reference two-player split (indigo #210044 left / pink #FD6EA3
+/// right), dead tiles outside the shape in very light grey, on the
+/// white card. A flat single-colour silhouette read as a blob — the
+/// mini-arena reads as the match itself.
+/// Note: the preview always shows the 2-player split, even for 3/4
+/// players (thirds/quadrants in the real match) — the shape is what
+/// the picker is choosing.
 class ArenaShapePreview extends StatelessWidget {
-  const ArenaShapePreview(
-      {super.key, required this.shape, required this.color, this.size = 56});
+  const ArenaShapePreview({super.key, required this.shape, this.size = 56});
   final ArenaShape shape;
-  final Color color;
   final double size;
 
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
       size: Size(size, size * 4 / 3),
-      painter: _ArenaShapePreviewPainter(shape, color),
+      painter: _ArenaShapePreviewPainter(shape),
     );
   }
 }
 
 class _ArenaShapePreviewPainter extends CustomPainter {
-  _ArenaShapePreviewPainter(this.shape, this.color);
+  _ArenaShapePreviewPainter(this.shape);
   final ArenaShape shape;
-  final Color color;
   static const _cols = 18;
   static const _rows = 24;
+  // Reference match colours (video 1: Indigo vs Pink).
+  static const _left = Color(0xFF210044);
+  static const _right = Color(0xFFFD6EA3);
+  static const _dead = Color(0xFFE5E7EB);
 
   @override
   void paint(Canvas canvas, Size size) {
     final tileW = size.width / _cols;
     final tileH = size.height / _rows;
-    final paint = Paint()..color = color;
+    final leftPaint = Paint()..color = _left;
+    final rightPaint = Paint()..color = _right;
+    final deadPaint = Paint()..color = _dead;
     for (var r = 0; r < _rows; r++) {
       for (var c = 0; c < _cols; c++) {
-        if (!arenaShapeCellPlayable(shape, c, r, _cols, _rows)) continue;
-        canvas.drawRect(
-            Rect.fromLTWH(c * tileW, r * tileH, tileW, tileH), paint);
+        final rect = Rect.fromLTWH(c * tileW, r * tileH, tileW, tileH);
+        if (!arenaShapeCellPlayable(shape, c, r, _cols, _rows)) {
+          canvas.drawRect(rect, deadPaint);
+          continue;
+        }
+        canvas.drawRect(rect, c < _cols ~/ 2 ? leftPaint : rightPaint);
       }
     }
   }
 
   @override
   bool shouldRepaint(covariant _ArenaShapePreviewPainter old) =>
-      old.shape != shape || old.color != color;
+      old.shape != shape;
 }
 
 /// Paints the whole arena: flat tiles, power-ups, balls. No grid lines,

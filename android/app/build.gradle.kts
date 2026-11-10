@@ -20,7 +20,9 @@ android {
 
     defaultConfig {
         applicationId = "com.colorclash.app"
-        minSdk = 21
+        // audioplayers_android needs minSdk 23 (was 21). Drops Android
+        // 5.0-5.1 only; the user's Oppo F9 is Android 8.1 (API 27).
+        minSdk = 23
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

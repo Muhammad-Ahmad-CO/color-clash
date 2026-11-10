@@ -145,7 +145,7 @@ class _SetupScreenState extends State<SetupScreen> {
           children: [
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -354,7 +354,10 @@ class _SetupScreenState extends State<SetupScreen> {
   /// explain how to unlock them.
   Widget _buildVsComputerCard() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      // Extra top padding so the header never sits tight against the
+      // card's top edge (the phone screenshot showed the subtitle
+      // half-sliced at the top of the screen while scrolling).
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
       decoration: BoxDecoration(
         color: DcColors.card,
         borderRadius: const BorderRadius.all(Radius.circular(14)),
@@ -369,7 +372,7 @@ class _SetupScreenState extends State<SetupScreen> {
                   fontSize: 24,
                   fontWeight: FontWeight.w900,
                   color: DcColors.text)),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           const Text('You are Player 1. The COMPUTER is Player 2.',
               textAlign: TextAlign.center,
               style: TextStyle(
@@ -423,7 +426,10 @@ class _SetupScreenState extends State<SetupScreen> {
                               children: [
                                 const Icon(Icons.lock, size: 18),
                                 const SizedBox(width: 4),
-                                Text(label),
+                                Flexible(
+                                  child: Text(label,
+                                      overflow: TextOverflow.ellipsis),
+                                ),
                               ],
                             )
                           : Text(label),
@@ -503,11 +509,15 @@ class _SetupScreenState extends State<SetupScreen> {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
+      // Fixed cell height: 88 px preview + 6 px gap + ~16 px label +
+      // slack. The old childAspectRatio 1.1 gave ~94 px cells on a
+      // 360 px phone while the content needs ~109 px, so the first
+      // row's labels were cut off mid-text by the next row.
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
           crossAxisSpacing: 8,
           mainAxisSpacing: 8,
-          childAspectRatio: 1.1),
+          mainAxisExtent: 118),
       itemCount: kArenaShapes.length + 1,
       itemBuilder: (context, i) {
         final isRandom = i == kArenaShapes.length;
@@ -544,8 +554,7 @@ class _SetupScreenState extends State<SetupScreen> {
                         size: const Size(44, 44),
                         painter: _DicePainter(accent),
                       )
-                    : ArenaShapePreview(
-                        shape: shape!, color: accent, size: 44),
+                    : ArenaShapePreview(shape: shape!, size: 44),
               ),
               const SizedBox(height: 6),
               Text(name,
@@ -634,10 +643,12 @@ class _SetupScreenState extends State<SetupScreen> {
                             fontWeight: FontWeight.w900,
                             fontSize: 15,
                             color: fg),
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis),
                     Text(p.colour.name,
                         style: TextStyle(
                             color: fg.withOpacity(0.85), fontSize: 12),
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis),
                     if (selected)
                       Text('EDITING',
