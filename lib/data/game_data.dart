@@ -1,6 +1,6 @@
 // Color Cover — static game data.
-// Counts are fixed by design: 60 colours, 30 ball shapes,
-// 12 base power-ups + Bomb Ball = 13 total power-ups.
+// Counts are fixed by design: 62 colours (60 + 2 rare unlockables),
+// 30 ball shapes, 12 base power-ups + Bomb Ball = 13 total power-ups.
 // Do not change the counts without updating Setup + README.
 
 /// One pickable colour: a human name + an ARGB hex value.
@@ -10,9 +10,10 @@ class GameColor {
   final int value; // 0xFFRRGGBB
 }
 
-const int kColourCount = 60;
+const int kColourCount = 62;
 
-/// EXACTLY 60 colours. Names are unique, hex values are unique.
+/// EXACTLY 62 colours. Names are unique, hex values are unique.
+/// The last two are RARE: locked until earned (see kRareColourUnlock).
 const List<GameColor> kColours = [
   GameColor('Indigo', 0xFF3F2A7A),
   GameColor('Pink', 0xFFFF7BAC),
@@ -74,7 +75,30 @@ const List<GameColor> kColours = [
   GameColor('Khaki', 0xFFC3B091),
   GameColor('Orchid', 0xFFDA70D6),
   GameColor('Electric Blue', 0xFF7DF9FF),
+  GameColor('Champion Gold', 0xFFFFD700),
+  GameColor('Streak Flame', 0xFFFF3D00),
 ];
+
+/// Rare colours: locked until earned. The keys are the shared unlock ids
+/// used by StatsService and the Setup colour picker — keep them in sync.
+const String kRareChampionGold = 'champion_gold';
+const String kRareStreakFlame = 'streak_flame';
+const Map<String, String> kRareColourUnlock = {
+  'Champion Gold': kRareChampionGold,
+  'Streak Flame': kRareStreakFlame,
+};
+
+/// How to unlock a rare colour, shown in the Setup picker.
+String rareColourUnlockText(String name) {
+  switch (name) {
+    case 'Champion Gold':
+      return 'Beat the COMPUTER on Crazy';
+    case 'Streak Flame':
+      return 'Play 7 days in a row';
+    default:
+      return '';
+  }
+}
 
 /// The 30 ball shapes, drawn with CustomPainter (no image assets).
 enum BallShape {
@@ -374,6 +398,8 @@ class MatchConfig {
     required this.botDifficulty,
     required this.trail,
     this.pack = ModePack.ultimate,
+    this.seriesWinsNeeded = 1,
+    this.isDailyChallenge = false,
   });
   final List<PlayerConfig> players;
   final GameMode mode;
@@ -381,6 +407,21 @@ class MatchConfig {
   final BotDifficulty botDifficulty;
   final TrailType trail;
   final ModePack pack;
+  /// Wins needed to take a series: 1 = single match, 2 = Best of 3,
+  /// 3 = Best of 5. Only used for 2 players / VS COMPUTER.
+  final int seriesWinsNeeded;
+  /// True when this match was launched from the Daily Challenge card —
+  /// winning it pays the +100 challenge bonus (once per day).
+  final bool isDailyChallenge;
+}
+
+/// Arguments for the /setup route: which mode to open, and whether this
+/// setup was launched from the Daily Challenge card (the flag is carried
+/// through into MatchConfig so the win counts for the challenge).
+class SetupArgs {
+  const SetupArgs({this.pack, this.dailyChallenge = false});
+  final ModePack? pack;
+  final bool dailyChallenge;
 }
 
 /// Modes section: 10 selectable mode cards (9 + Time Attack).

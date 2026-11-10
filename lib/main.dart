@@ -85,8 +85,22 @@ class ColorCoverApp extends StatelessWidget {
       },
       onGenerateRoute: (settings) {
         if (settings.name == '/setup') {
-          final pack = settings.arguments as ModePack?;
-          return MaterialPageRoute(builder: (_) => SetupScreen(initialPack: pack));
+          // Modes/Home pass a bare ModePack; the Daily Challenge card
+          // passes SetupArgs so the challenge flag survives into the
+          // match. Both shapes are accepted here.
+          final args = settings.arguments;
+          ModePack? pack;
+          var dailyChallenge = false;
+          if (args is ModePack) {
+            pack = args;
+          } else if (args is SetupArgs) {
+            pack = args.pack;
+            dailyChallenge = args.dailyChallenge;
+          }
+          return MaterialPageRoute(
+              builder: (_) => SetupScreen(
+                  initialPack: pack,
+                  initialDailyChallenge: dailyChallenge));
         }
         if (settings.name == '/game') {
           final config = settings.arguments as MatchConfig;

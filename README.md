@@ -5,7 +5,7 @@ A 2, 3 or 4 player territory battle on one phone. Paint the arena, steal the til
 ## How to play
 
 1. **Pick a mode** — On Home, tap **MODES** (10 cards) or tap **PLAY** for the default mode.
-2. **Setup** — Choose 2, 3 or 4 players. Each player picks a name, a colour (60 colours, no two players the same) and a ball shape (30 shapes). Pick an arena shape too: Rectangle, Heart, Star, Maze or Circle.
+2. **Setup** — Choose 2, 3 or 4 players. Each player picks a name, a colour (62 colours, no two players the same — 2 rare colours are locked until earned) and a ball shape (30 shapes). Pick an arena shape too: Rectangle, Heart, Star, Maze, Circle or Random. For 2 players you can also pick a series: Single, Best of 3 or Best of 5.
 3. **Steer your ball** — Your ball moves on its own. Touch anywhere in your zone and drag to steer it. 2 players: left half vs right half. 3 players: three vertical thirds. 4 players: four corners. All players steer at the same time with different fingers.
 4. **Paint the arena** — Where your ball goes, tiles change to your colour. Take tiles from other players.
 5. **Grab power-ups** — A power-up tile appears every 6 seconds (max 3 on the field). Drive over it to use it. A banner with its name shows above the arena for a few seconds.
@@ -31,13 +31,30 @@ A 2, 3 or 4 player territory battle on one phone. Paint the arena, steal the til
 
 ## Arena shapes (Setup)
 
-Rectangle (full grid), Heart, Star, Maze, Circle. Tiles outside the shape are dead and cannot be painted.
+Rectangle (full grid), Heart, Star, Maze, Circle, or Random (a new shape every match). Tiles outside the shape are dead and cannot be painted.
 
 ## Stats, achievements + daily reward (Home)
 
-- Every finished match is saved on your phone: date, mode, players, winner, duration, tiles painted and power-ups collected. Open **HISTORY** on Home for the last 20 matches with W/L and coins earned. The end card also shows the match stats (tiles painted, power-ups, biggest lead).
+- Every finished match is saved on your phone: date, mode, players, winner, duration, tiles painted and power-ups collected. Open **HISTORY** on Home for the last 20 matches with W/L and coins earned. The end card also shows the match stats (tiles painted, power-ups, biggest lead, best combo).
 - **ACHIEVEMENTS** on Home: 7 badges with coin rewards — First Win (+25), On Fire 5-win streak (+100), Painter 1000 tiles (+50), Power Collector 10 power-ups (+50), Bot Slayer beat Crazy (+75), Crowd Champion win a 4-player match (+75), Last Second win Sudden Death (+50). Each pays once.
 - **Daily reward:** +50 coins once per day when you open the app. A gold pill on Home shows it.
+
+## Streaks, ranks + bot ladder (Home)
+
+- **Rank** comes from your win streak: Bronze (0–2), Silver (3–4), Gold (5–9), Legend (10+). Win streaks also pay milestones: x3 +50, x5 +100, x10 +200 (once each).
+- **Bot ladder:** Easy is always open. Beat Easy to unlock Medium, beat Medium to unlock Crazy. Beating Crazy earns the CHAMPION title and unlocks the rare colour Champion Gold.
+- **7-day streak:** play every day — Day 7 pays +300 coins and unlocks the rare colour Streak Flame.
+- **Daily missions:** 3 a day on Home (paint 500 tiles, collect 5 power-ups, plus one rotating mission) — claim +30/+30/+50 coins.
+- **Daily spin:** one free spin a day — +20/+50/+100 coins, or a still-locked rare colour.
+- **Daily challenge:** one special mode per day on Home — win it for +100 coins.
+- **My Records:** most tiles in one match, best combo, longest streak, total wins.
+- **Best-of series:** Single, Best of 3 or Best of 5 (2 players / VS COMPUTER). The end card shows the series score and a NEXT MATCH button until someone takes the series.
+
+## Combo + comeback (in every match)
+
+- **Combo:** paint tiles without a 2-second gap to build a combo — x10, x25 and x50 show a banner, and your best combo pays x2 coins at the end (capped at 100).
+- **Comeback:** a player trailing the leader by 40+ tiles gets +15% speed and a COMEBACK tag under their name.
+- **Mystery tile:** 15% of power-up spawns are purple gift boxes — pick one up to reveal a random power-up.
 
 ## Power-ups (13 total)
 

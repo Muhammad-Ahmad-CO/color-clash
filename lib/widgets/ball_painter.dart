@@ -513,6 +513,35 @@ void drawPowerUpIcon(Canvas canvas, String id, Rect rect, Color glyph) {
           Offset(rect.left + rect.width * 0.88, rect.top + rect.height * 0.92),
           stroke);
       break;
+    case 'mystery':
+      // Gift box: lid + two box halves (the gap between them reads as
+      // the ribbon) + a two-loop bow on top. Drawn paths only, no text.
+      canvas.drawRect(
+          Rect.fromLTWH(rect.left + rect.width * 0.14,
+              rect.top + rect.height * 0.24, rect.width * 0.72,
+              rect.height * 0.16),
+          fill);
+      canvas.drawRect(
+          Rect.fromLTWH(rect.left + rect.width * 0.18,
+              rect.top + rect.height * 0.42, rect.width * 0.29,
+              rect.height * 0.48),
+          fill);
+      canvas.drawRect(
+          Rect.fromLTWH(rect.left + rect.width * 0.53,
+              rect.top + rect.height * 0.42, rect.width * 0.29,
+              rect.height * 0.48),
+          fill);
+      canvas.drawCircle(
+          Offset(rect.left + rect.width * 0.36,
+              rect.top + rect.height * 0.14),
+          rect.width * 0.09,
+          fill);
+      canvas.drawCircle(
+          Offset(rect.left + rect.width * 0.64,
+              rect.top + rect.height * 0.14),
+          rect.width * 0.09,
+          fill);
+      break;
     default:
       canvas.drawPath(starPath(rect.center, 5, rect.width * 0.45, rect.width * 0.2), fill);
   }
@@ -765,15 +794,21 @@ class ArenaPainter extends CustomPainter {
     // Power-up tiles: solid square in the power-up's OWN colour + drawn
     // icon glyph in high-contrast colour (never a letter). The icon fills
     // 80% of the tile so each power-up reads at a glance on a phone.
+    // A mystery tile hides its power behind a purple gift box.
     for (final p in engine.powerUps) {
-      final tileColor = Color(p.def.value);
       final rect = Rect.fromLTWH(p.col * tileW, p.row * tileH, tileW, tileH);
-      canvas.drawRect(rect, Paint()..color = tileColor);
       final iconRect = Rect.fromLTWH(
           p.col * tileW + tileW * 0.1,
           p.row * tileH + tileH * 0.1,
           tileW * 0.8,
           tileH * 0.8);
+      if (p.mystery) {
+        canvas.drawRect(rect, Paint()..color = const Color(0xFF9C27B0));
+        drawPowerUpIcon(canvas, 'mystery', iconRect, Colors.white);
+        continue;
+      }
+      final tileColor = Color(p.def.value);
+      canvas.drawRect(rect, Paint()..color = tileColor);
       drawPowerUpIcon(canvas, p.def.id, iconRect, contrastTextColor(tileColor));
     }
 

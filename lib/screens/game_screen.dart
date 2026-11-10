@@ -43,6 +43,17 @@ class _GameScreenState extends State<GameScreen>
   bool _statsDone = false; // match recorded once per match.
   List<String> _newAchievements = <String>[];
   final GlobalKey _arenaKey = GlobalKey();
+  // Match generation: incremented on every restart. The async
+  // awardMatch/recordMatch callbacks ignore stale generations, so a
+  // NEXT MATCH can never overwrite the new match's coins/announcements.
+  int _matchGen = 0;
+  // Best-of series (2 players / VS COMPUTER only): wins per player.
+  List<int> _seriesScore = <int>[0, 0];
+  bool _seriesDecided = false;
+  // End-card extras from the last recordMatch result.
+  int _comboBonus = 0;
+  int _bestCombo = 0;
+  List<String> _extraLines = <String>[];
 
   // Active joysticks: pointer id -> joystick (player, touch-down origin,
   // current finger position). One per active finger.
@@ -87,25 +98,43 @@ class _GameScreenState extends State<GameScreen>
         if (_engine.finished && !_showEnd) {
           _timer?.cancel();
           SoundFx.win();
-          final won = _engine.winnerIndex() == 0 ||
+          final gen = _matchGen;
+          final winnerIdx = _engine.winnerIndex();
+          final won = winnerIdx == 0 ||
               (widget.config.mode == GameMode.team2v2 &&
-                  (_engine.winnerIndex() == 0 ||
-                      _engine.winnerIndex() == 2));
+                  (winnerIdx == 0 || winnerIdx == 2));
+          // Series score is computed synchronously — the end card needs
+          // it right away (bonuses arrive a moment later, async).
+          setState(() {
+            if (widget.config.seriesWinsNeeded > 1 &&
+                widget.players.length == 2) {
+              _seriesScore[winnerIdx]++;
+              _seriesDecided =
+                  _seriesScore[winnerIdx] >= widget.config.seriesWinsNeeded;
+              if (_seriesDecided) {
+                // Fire-and-forget: counts a series won by Player 1.
+                StatsService.recordSeriesWin(winnerIdx == 0);
+              }
+            }
+            _showEnd = true;
+          });
+          final wonDailyChallenge =
+              won && widget.config.isDailyChallenge;
           CoinsService.awardMatch(won: won).then((earned) {
-            if (!mounted) return;
+            if (!mounted || gen != _matchGen) return;
             setState(() {
               _coinsEarned = earned;
               _coinsDone = true;
             });
-            // Record the match (history + lifetime stats + achievements)
-            // once per match; rewards for newly unlocked badges are paid
-            // in coins by StatsService.
+            // Record the match (history + lifetime/daily stats +
+            // achievements + every match-end bonus) once per match;
+            // recordMatch is the single payer for all bonuses.
             if (_statsDone) return;
             _statsDone = true;
             StatsService.recordMatch(
               mode: modePackName(widget.config.pack),
               players: widget.players.map((p) => p.name).toList(),
-              winner: widget.players[_engine.winnerIndex()].name,
+              winner: widget.players[winnerIdx].name,
               durationSeconds: _engine.time.round(),
               tiles: List<int>.from(_engine.tilesPainted),
               powerUps: List<int>.from(_engine.powerUpsCollected),
@@ -117,19 +146,45 @@ class _GameScreenState extends State<GameScreen>
               playerCount: widget.players.length,
               suddenDeath: widget.config.pack == ModePack.suddenDeath ||
                   widget.config.pack == ModePack.allChaos,
-            ).then((unlocked) {
-              if (mounted && unlocked.isNotEmpty) {
-                setState(() => _newAchievements = unlocked);
+              botDifficulty: widget.config.mode == GameMode.vsBot
+                  ? widget.config.botDifficulty
+                  : null,
+              bestCombo: _engine.matchBestCombo,
+              wonDailyChallenge: wonDailyChallenge,
+            ).then((result) {
+              if (!mounted || gen != _matchGen) return;
+              final lines = <String>[];
+              for (final m in result.streakMilestones) {
+                lines.add('${m.label}! +${m.coins} COINS');
               }
+              if (result.challengeBonus > 0) {
+                lines.add(
+                    'DAILY CHALLENGE WON! +${result.challengeBonus} COINS');
+              }
+              if (result.streak7Awarded) {
+                lines.add('7-DAY STREAK! +300 COINS');
+              }
+              for (final d in result.botUnlockedNow) {
+                lines.add('${botDifficultyName(d).toUpperCase()} UNLOCKED!');
+              }
+              setState(() {
+                _coinsEarned = result.totalCoins;
+                _newAchievements = result.achievements;
+                _extraLines = lines;
+                _comboBonus = result.comboBonus;
+                _bestCombo = _engine.matchBestCombo;
+              });
             });
           });
-          setState(() => _showEnd = true);
         }
       });
     });
   }
 
-  void _restartMatch() {
+  /// Start a fresh match. NEXT MATCH keeps the series score (same
+  /// series, next game); REMATCH resets the series and starts a new one.
+  void _newMatch({required bool resetSeries}) {
+    _matchGen++;
     setState(() {
       _engine = GameEngine(widget.config);
       _pointers.clear();
@@ -138,10 +193,20 @@ class _GameScreenState extends State<GameScreen>
       _coinsDone = false;
       _statsDone = false;
       _newAchievements = <String>[];
+      _extraLines = <String>[];
+      _comboBonus = 0;
+      _bestCombo = 0;
       _paused = false;
+      if (resetSeries) {
+        _seriesScore = <int>[0, 0];
+        _seriesDecided = false;
+      }
     });
     _startLoop();
   }
+
+  void _restartMatch() => _newMatch(resetSeries: true);
+  void _nextMatch() => _newMatch(resetSeries: false);
 
   void _changeSetup() {
     Navigator.pushNamedAndRemoveUntil(
@@ -271,6 +336,7 @@ class _GameScreenState extends State<GameScreen>
                             percentages: _engine.percentages(),
                             players: widget.players,
                             width: arenaW,
+                            comeback: _engine.comebackPlayers,
                           ),
                           SizedBox(
                             height: extrasH,
@@ -325,6 +391,13 @@ class _GameScreenState extends State<GameScreen>
               coinsEarned: _coinsEarned,
               coinsDone: _coinsDone,
               newAchievements: _newAchievements,
+              extraLines: _extraLines,
+              bestCombo: _bestCombo,
+              comboBonus: _comboBonus,
+              seriesScore: _seriesScore,
+              seriesNeeded: widget.config.seriesWinsNeeded,
+              seriesDecided: _seriesDecided,
+              onNextMatch: _nextMatch,
               onRematch: _restartMatch,
               onChangeSetup: _changeSetup,
               onHome: () => Navigator.pushNamedAndRemoveUntil(
@@ -528,14 +601,18 @@ class _BannerZone extends StatelessWidget {
 /// No percentage numbers (the reference prints none). Dot Clash chrome:
 /// the rows sit in a clean off-white card instead of floating on the
 /// gradient — same content, same reference numbers (none).
+/// A player on a comeback boost (trailing by 40+ tiles) gets a small
+/// orange COMEBACK tag after their track.
 class _TerritoryBar extends StatelessWidget {
   const _TerritoryBar(
       {required this.percentages,
       required this.players,
-      required this.width});
+      required this.width,
+      this.comeback = const <int>{}});
   final List<double> percentages;
   final List<PlayerConfig> players;
   final double width;
+  final Set<int> comeback;
 
   @override
   Widget build(BuildContext context) {
@@ -598,6 +675,14 @@ class _TerritoryBar extends StatelessWidget {
                     },
                   ),
                 ),
+                if (comeback.contains(i)) ...[
+                  const SizedBox(width: 6),
+                  const Text('COMEBACK',
+                      style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w900,
+                          color: DcColors.orange)),
+                ],
               ],
             ),
           );
@@ -667,9 +752,12 @@ class _PauseOverlay extends StatelessWidget {
 /// End card: the whole playfield dims to near-black, then a flat
 /// winner-colour rectangle (sharp corners) with a drawn crown,
 /// "<NAME> DOMINATES!" and the match duration. Below it: match stats
-/// (tiles painted, power-ups, biggest lead), newly unlocked achievements,
-/// coins, and three actions — REMATCH (same setup), CHANGE SETUP (same
-/// mode, new picks), HOME. No confetti, no emoji.
+/// (tiles painted, power-ups, biggest lead, best combo), newly unlocked
+/// achievements, bonus announcements (streak milestones, daily challenge,
+/// 7-day streak, bot unlocks), coins, and actions — NEXT MATCH while a
+/// best-of series is undecided, REMATCH (new series) once it is decided,
+/// CHANGE SETUP (same mode, new picks), HOME. No confetti, no emoji.
+/// A series win shows "<NAME> WINS THE SERIES!" instead of DOMINATES.
 class _EndCardOverlay extends StatelessWidget {
   const _EndCardOverlay({
     required this.engine,
@@ -677,6 +765,13 @@ class _EndCardOverlay extends StatelessWidget {
     required this.coinsEarned,
     required this.coinsDone,
     required this.newAchievements,
+    this.extraLines = const <String>[],
+    this.bestCombo = 0,
+    this.comboBonus = 0,
+    this.seriesScore = const <int>[0, 0],
+    this.seriesNeeded = 1,
+    this.seriesDecided = false,
+    this.onNextMatch,
     required this.onRematch,
     required this.onChangeSetup,
     required this.onHome,
@@ -686,6 +781,13 @@ class _EndCardOverlay extends StatelessWidget {
   final int coinsEarned;
   final bool coinsDone;
   final List<String> newAchievements;
+  final List<String> extraLines;
+  final int bestCombo;
+  final int comboBonus;
+  final List<int> seriesScore;
+  final int seriesNeeded;
+  final bool seriesDecided;
+  final VoidCallback? onNextMatch;
   final VoidCallback onRematch;
   final VoidCallback onChangeSetup;
   final VoidCallback onHome;
@@ -696,6 +798,12 @@ class _EndCardOverlay extends StatelessWidget {
     final winner = players[winnerIndex];
     final bg = Color(winner.colour.value);
     final fg = contrastTextColor(bg);
+    final inSeries = seriesNeeded > 1 && players.length == 2;
+    final seriesWinner =
+        seriesDecided ? (seriesScore[0] >= seriesNeeded ? 0 : 1) : -1;
+    final title = seriesDecided
+        ? '${players[seriesWinner].name.toUpperCase()} WINS THE SERIES!'
+        : engine.winnerLabel();
     return Container(
       color: Colors.black.withOpacity(0.85),
       alignment: Alignment.center,
@@ -720,7 +828,7 @@ class _EndCardOverlay extends StatelessWidget {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        engine.winnerLabel(),
+                        title,
                         textAlign: TextAlign.center,
                         style: TextStyle(
                             fontSize: 19,
@@ -735,6 +843,18 @@ class _EndCardOverlay extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (inSeries)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Text(
+                      'SERIES  ${players[0].name.toUpperCase()} ${seriesScore[0]} — ${seriesScore[1]} ${players[1].name.toUpperCase()}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white),
+                    ),
+                  ),
                 // Match stats (Dot Clash-style one-line rows).
                 Padding(
                   padding: const EdgeInsets.only(top: 12),
@@ -760,6 +880,9 @@ class _EndCardOverlay extends StatelessWidget {
                       ),
                       _StatLine('BIGGEST LEAD',
                           '${engine.biggestLead} tiles'),
+                      if (bestCombo >= 5)
+                        _StatLine('BEST COMBO',
+                            'x$bestCombo  (+$comboBonus COINS)'),
                     ],
                   ),
                 ),
@@ -771,6 +894,22 @@ class _EndCardOverlay extends StatelessWidget {
                         final a = achievementById(id);
                         return Text(
                           'ACHIEVEMENT UNLOCKED: ${a.name.toUpperCase()}  (+${a.reward} COINS)',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFFFFCA28)),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                if (extraLines.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Column(
+                      children: extraLines.map((line) {
+                        return Text(
+                          line,
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                               fontSize: 13,
@@ -793,7 +932,8 @@ class _EndCardOverlay extends StatelessWidget {
                 SizedBox(
                   width: cardW,
                   child: TextButton(
-                    onPressed: onRematch,
+                    onPressed:
+                        inSeries && !seriesDecided ? onNextMatch : onRematch,
                     style: TextButton.styleFrom(
                       backgroundColor: bg,
                       foregroundColor: fg,
@@ -802,7 +942,8 @@ class _EndCardOverlay extends StatelessWidget {
                       textStyle: const TextStyle(
                           fontSize: 16, fontWeight: FontWeight.w900),
                     ),
-                    child: const Text('REMATCH'),
+                    child: Text(
+                        inSeries && !seriesDecided ? 'NEXT MATCH' : 'REMATCH'),
                   ),
                 ),
                 const SizedBox(height: 10),

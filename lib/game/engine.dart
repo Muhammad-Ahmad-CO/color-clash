@@ -10,10 +10,13 @@ import '../data/game_data.dart';
 import 'match_theme.dart';
 
 class PowerUpOnField {
-  PowerUpOnField(this.col, this.row, this.def);
+  PowerUpOnField(this.col, this.row, this.def, {this.mystery = false});
   int col; // mutable: MAGNET pulls power-up tiles across the arena.
   int row;
   final PowerUpDef def;
+  /// Mystery tile: a purple gift box — the hidden power is re-rolled at
+  /// pickup, so the reveal is always a surprise.
+  final bool mystery;
 }
 
 /// One stacked power-up banner (reference: newest on top, ~2-4 s visible).
@@ -58,6 +61,9 @@ class GameEngine {
     ultimateMeters = List<double>.filled(players.length, 0);
     tilesPainted = List<int>.filled(players.length, 0);
     powerUpsCollected = List<int>.filled(players.length, 0);
+    combo = List<int>.filled(players.length, 0);
+    bestCombo = List<int>.filled(players.length, 0);
+    lastPaintTime = List<double>.filled(players.length, -1000);
     timeLeft = matchSeconds.toDouble();
     _initPlayable();
     _initTerritory();
@@ -101,6 +107,21 @@ class GameEngine {
   late List<int> tilesPainted; // tiles each player painted this match.
   late List<int> powerUpsCollected; // power-ups each player collected.
   int biggestLead = 0; // biggest tile-count gap between 1st and 2nd.
+
+  /// Combo: consecutive tiles painted with gaps under 2 seconds. A
+  /// FREEZE breaks it (a frozen ball does not paint). Best combo is the
+  /// max over all players — that is what the end-card bonus pays on.
+  late List<int> combo;
+  late List<int> bestCombo;
+  late List<double> lastPaintTime;
+  int get matchBestCombo =>
+      bestCombo.isEmpty ? 0 : bestCombo.reduce((a, b) => a > b ? a : b);
+
+  /// Players trailing the leader by 40+ tiles get +15% speed (comeback).
+  /// Computed once per step, before the ball loop. Per-player, not
+  /// per-team: in Team 2v2 a player trailing individually while their
+  /// team leads still gets the boost.
+  final Set<int> comebackPlayers = <int>{};
 
   /// Active power-up banners (reference stacks up to 4 at once, newest on
   /// top). Each entry: (player, text, visible-until time).
@@ -307,6 +328,8 @@ class GameEngine {
     if (b.nitroUntil > time) s *= 1.8;
     if (b.infiltratorUntil > time) s *= 1.15;
     if (iceUntil > time) s *= 1.4;
+    // Comeback boost: trailing by 40+ tiles means +15% speed.
+    if (comebackPlayers.contains(b.player)) s *= 1.15;
     if (isVsBot && b.player == 1) {
       if (config.botDifficulty == BotDifficulty.easy) s *= 0.85;
       if (config.botDifficulty == BotDifficulty.crazy) s *= 1.2;
@@ -325,11 +348,31 @@ class GameEngine {
   /// Paint one tile for [player] and count it for match stats.
   /// Chaos/Fire/Earthquake reassign tiles directly (environment, not
   /// player-painted) and do not go through here.
+  /// Combo: every conversion extends the player's combo when the gap
+  /// since their last conversion is under 2 seconds, else it restarts
+  /// at 1. Bomb/Tidal/Tsunami also paint through here, so a big blast
+  /// counts as a big combo — that is the reward for the blast.
   void _setTile(int idx, int player) {
     if (grid[idx] == player) return;
     grid[idx] = player;
     paintTime[idx] = time;
     tilesPainted[player]++;
+    final prev = combo[player];
+    if (time - lastPaintTime[player] < 2.0) {
+      combo[player]++;
+    } else {
+      combo[player] = 1;
+    }
+    lastPaintTime[player] = time;
+    if (combo[player] > bestCombo[player]) bestCombo[player] = combo[player];
+    // Milestone banners use a crossing check (prev < m <= new): a bomb
+    // or tidal wave can jump past a value in one frame, and an exact
+    // equality check would never fire.
+    for (final m in [10, 25, 50]) {
+      if (prev < m && combo[player] >= m) {
+        _showBanner(player, 'COMBO x$m!', 'Keep painting — no gaps!');
+      }
+    }
   }
 
   void _paintAround(BallState b) {
@@ -500,6 +543,10 @@ class GameEngine {
     } else {
       def = kPowerUps[_rng.nextInt(kPowerUps.length)];
     }
+    // Mystery tile: 15% of spawns hide their power behind a gift box.
+    // The stored def is only a placeholder — the real power is re-rolled
+    // at pickup, so the reveal is always a surprise.
+    final mystery = _rng.nextDouble() < 0.15;
     var c = _rng.nextInt(cols);
     var r = _rng.nextInt(rows);
     for (var tries = 0; tries < 12; tries++) {
@@ -508,7 +555,7 @@ class GameEngine {
       r = _rng.nextInt(rows);
     }
     if (!isPlayableTile(c, r)) return;
-    powerUps.add(PowerUpOnField(c, r, def));
+    powerUps.add(PowerUpOnField(c, r, def, mystery: mystery));
   }
 
   void _runChaosEvent() {
@@ -678,6 +725,25 @@ class GameEngine {
       }
     }
 
+    // Combo reset: a 2-second gap without painting ends the combo.
+    // Comeback: players trailing the leader by 40+ tiles get +15%
+    // speed (see _ballSpeed). Computed once per step, before the ball
+    // loop, so every ball in the frame sees the same values.
+    for (var i = 0; i < players.length; i++) {
+      if (combo[i] > 0 && time - lastPaintTime[i] > 2.0) combo[i] = 0;
+    }
+    final stepCounts = tileCounts();
+    var stepLeader = 0;
+    for (var i = 1; i < stepCounts.length; i++) {
+      if (stepCounts[i] > stepCounts[stepLeader]) stepLeader = i;
+    }
+    comebackPlayers.clear();
+    for (var i = 0; i < stepCounts.length; i++) {
+      if (i != stepLeader && stepCounts[stepLeader] - stepCounts[i] >= 40) {
+        comebackPlayers.add(i);
+      }
+    }
+
     for (final b in List<BallState>.from(balls)) {
       if (isVsBot && b.player == 1) _botSteer(b);
 
@@ -752,11 +818,17 @@ class GameEngine {
 
       // Power-up pickup: collect every power-up tile the ball's disc
       // overlaps (a ball can graze two adjacent tiles in one frame).
+      // A mystery tile re-rolls its power at pickup — uniform over all
+      // 13, with no bomb bias, so the reveal is a real surprise.
       for (var i = powerUps.length - 1; i >= 0; i--) {
         final p = powerUps[i];
         if (_ballOverlapsTile(b, p.col, p.row)) {
           powerUps.removeAt(i);
-          _applyPowerUp(b, p.def);
+          if (p.mystery) {
+            _applyPowerUp(b, kPowerUps[_rng.nextInt(kPowerUps.length)]);
+          } else {
+            _applyPowerUp(b, p.def);
+          }
         }
       }
     }

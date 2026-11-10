@@ -4,22 +4,28 @@
 // built like the game itself: flat bright colours, sharp corners, heavy
 // grotesque caps type, BIG tappable cards everywhere.
 //  - Each player's tab is a big card filled with THEIR colour (live preview).
-//  - Colour picker = big tiles with the colour NAME printed on them (60).
+//  - Colour picker = big tiles with the colour NAME printed on them (62,
+//    including 2 rare colours locked until earned).
 //  - Shape picker = big tiles with the shape drawn LARGE (30).
-//  - Arena picker = 5 big tiles showing the real arena shape.
-//  - VS COMPUTER gets a big YOU vs COMPUTER header + 3 big difficulty buttons.
+//  - Arena picker = 6 big tiles showing the real arena shape + RANDOM.
+//  - VS COMPUTER gets a big YOU vs COMPUTER header + 3 big difficulty buttons
+//    (bot ladder: Easy open, Medium/Crazy unlock by beating the previous).
+//  - Series picker for 2 players: Single / Best of 3 / Best of 5.
 //  - START BATTLE is HUGE, full-width, pinned at the bottom — always visible.
+import 'dart:math';
 import 'package:flutter/material.dart';
 import '../data/game_data.dart';
 import '../game/coins.dart';
 import '../game/match_theme.dart';
 import '../game/sound.dart';
+import '../game/stats.dart';
 import '../widgets/ball_painter.dart';
 import '../widgets/dot_chrome.dart';
 
 class SetupScreen extends StatefulWidget {
-  const SetupScreen({super.key, this.initialPack});
+  const SetupScreen({super.key, this.initialPack, this.initialDailyChallenge = false});
   final ModePack? initialPack;
+  final bool initialDailyChallenge;
   @override
   State<SetupScreen> createState() => _SetupScreenState();
 }
@@ -30,7 +36,11 @@ class _SetupScreenState extends State<SetupScreen> {
   late List<PlayerConfig> _players;
   int _editing = 0; // which player's card is open
   ArenaShape _arenaShape = ArenaShape.rectangle;
-  BotDifficulty _botDifficulty = BotDifficulty.medium;
+  bool _randomArena = false;
+  BotDifficulty _botDifficulty = BotDifficulty.easy;
+  /// Wins needed to take the series: 1 = single, 2 = Best of 3, 3 = Best
+  /// of 5. Only for 2 players / VS COMPUTER.
+  int _seriesWinsNeeded = 1;
 
   /// Modes force the player count: Team 2v2 and Battle Royale need 4,
   /// VS COMPUTER is 1 human + 1 computer (2 slots, P2 is the computer).
@@ -50,6 +60,16 @@ class _SetupScreenState extends State<SetupScreen> {
     ];
     if (_pack == ModePack.vsBot) _players[1].name = 'COMPUTER';
     CoinsService.load();
+    // Bot ladder + rare colours need StatsService; load it, then clamp
+    // the difficulty (a locked default would be unselectable).
+    StatsService.load().then((_) {
+      if (!mounted) return;
+      setState(() {
+        if (!StatsService.isBotUnlocked(_botDifficulty)) {
+          _botDifficulty = BotDifficulty.easy;
+        }
+      });
+    });
   }
 
   List<PlayerConfig> get _active => _players.sublist(0, _playerCount);
@@ -59,11 +79,23 @@ class _SetupScreenState extends State<SetupScreen> {
     setState(() {
       _playerCount = n;
       if (_editing >= n) _editing = 0;
+      // Series only exist for 2 players — switching away resets it.
+      if (n != 2) _seriesWinsNeeded = 1;
     });
     SoundFx.click();
   }
 
   void _pickColour(GameColor c) {
+    // Rare colours are locked until earned — tapping one explains how.
+    final rareKey = kRareColourUnlock[c.name];
+    if (rareKey != null && !StatsService.isColourUnlocked(rareKey)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(
+                '${c.name} is locked. Unlock: ${rareColourUnlockText(c.name)}.')),
+      );
+      return;
+    }
     final takenBy = _active.indexWhere((p) => p.colour.value == c.value);
     if (takenBy >= 0 && takenBy != _editing) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -77,16 +109,23 @@ class _SetupScreenState extends State<SetupScreen> {
 
   void _startBattle() {
     SoundFx.click();
+    // RANDOM arena: pick one of the 5 real shapes now, so the engine
+    // always sees a concrete shape.
+    final shape = _randomArena
+        ? kArenaShapes[Random().nextInt(kArenaShapes.length)]
+        : _arenaShape;
     Navigator.pushNamed(
       context,
       '/game',
       arguments: MatchConfig(
         players: _active.map((p) => p.copy()).toList(),
         mode: gameModeForPack(_pack),
-        arenaShape: _arenaShape,
+        arenaShape: shape,
         botDifficulty: _botDifficulty,
         trail: CoinsService.equippedTrail,
         pack: _pack,
+        seriesWinsNeeded: _seriesWinsNeeded,
+        isDailyChallenge: widget.initialDailyChallenge,
       ),
     );
   }
@@ -146,6 +185,16 @@ class _SetupScreenState extends State<SetupScreen> {
                               : '4 players: drag in four corners (2 x 2).',
                       style: const TextStyle(color: DcColors.muted, fontSize: 15),
                     ),
+                    if (_playerCount == 2) ...[
+                      const SizedBox(height: 18),
+                      _sectionTitle('MATCH SERIES'),
+                      const SizedBox(height: 10),
+                      _buildSeriesPicker(),
+                      const SizedBox(height: 8),
+                      const Text(
+                          'Best of 3: first to 2 wins takes the series. Best of 5: first to 3.',
+                          style: TextStyle(color: DcColors.muted, fontSize: 15)),
+                    ],
                     const SizedBox(height: 18),
                     _sectionTitle('CHOOSE YOUR PLAYER'),
                     const SizedBox(height: 10),
@@ -185,7 +234,7 @@ class _SetupScreenState extends State<SetupScreen> {
                           v.trim().isEmpty ? 'Player ${_editing + 1}' : v.trim()),
                     ),
                     const SizedBox(height: 18),
-                    _sectionTitle('COLOUR — 60 TO CHOOSE'),
+                    _sectionTitle('COLOUR — 62 TO CHOOSE'),
                     const SizedBox(height: 10),
                     _buildColourGrid(current),
                     const SizedBox(height: 18),
@@ -300,6 +349,9 @@ class _SetupScreenState extends State<SetupScreen> {
 
   /// VS COMPUTER header: big off-white card with an orange border +
   /// 3 big difficulty pills (selected = orange, per Dot Clash).
+  /// Bot ladder: Easy is always open; Medium unlocks by beating Easy,
+  /// Crazy by beating Medium. Locked pills are dimmed with a lock and
+  /// explain how to unlock them.
   Widget _buildVsComputerCard() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -328,22 +380,36 @@ class _SetupScreenState extends State<SetupScreen> {
           Row(
             children: BotDifficulty.values.map((d) {
               final selected = _botDifficulty == d;
+              final locked = !StatsService.isBotUnlocked(d);
+              final label = botDifficultyName(d).toUpperCase();
               return Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: SizedBox(
                     height: 64,
                     child: TextButton(
-                      onPressed: () =>
-                          setState(() => _botDifficulty = d),
+                      onPressed: () {
+                        if (locked) {
+                          final need = d == BotDifficulty.medium
+                              ? 'Easy'
+                              : 'Medium';
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                                content: Text(
+                                    '${botDifficultyName(d)} is locked. Beat $need first!')),
+                          );
+                          return;
+                        }
+                        setState(() => _botDifficulty = d);
+                      },
                       style: TextButton.styleFrom(
-                        backgroundColor: selected
-                            ? DcColors.orange
-                            : Colors.white,
-                        foregroundColor: selected
-                            ? Colors.white
-                            : DcColors.text,
-                        side: selected
+                        backgroundColor: locked
+                            ? const Color(0xFFE5E7EB)
+                            : (selected ? DcColors.orange : Colors.white),
+                        foregroundColor: locked
+                            ? DcColors.muted
+                            : (selected ? Colors.white : DcColors.text),
+                        side: selected && !locked
                             ? BorderSide.none
                             : const BorderSide(
                                 color: DcColors.border, width: 1.5),
@@ -351,64 +417,147 @@ class _SetupScreenState extends State<SetupScreen> {
                         textStyle: const TextStyle(
                             fontSize: 20, fontWeight: FontWeight.w900),
                       ),
-                      child: Text(botDifficultyName(d).toUpperCase()),
+                      child: locked
+                          ? Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.lock, size: 18),
+                                const SizedBox(width: 4),
+                                Text(label),
+                              ],
+                            )
+                          : Text(label),
                     ),
                   ),
                 ),
               );
             }).toList(),
           ),
+          const SizedBox(height: 10),
+          Text(_ladderHint(),
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: DcColors.orangeDark)),
         ],
       ),
     );
   }
 
-  /// 5 big arena-shape preview tiles showing the real shape.
-  Widget _buildArenaPicker(Color accent) {
+  String _ladderHint() {
+    if (!StatsService.isBotUnlocked(BotDifficulty.medium)) {
+      return 'Beat EASY to unlock MEDIUM.';
+    }
+    if (!StatsService.isBotUnlocked(BotDifficulty.crazy)) {
+      return 'Beat MEDIUM to unlock CRAZY.';
+    }
+    return 'All difficulties unlocked — go for CHAMPION!';
+  }
+
+  /// Series picker: Single / Best of 3 / Best of 5 (2 players only).
+  Widget _buildSeriesPicker() {
+    const options = <(int, String)>[
+      (1, 'SINGLE'),
+      (2, 'BEST OF 3'),
+      (3, 'BEST OF 5'),
+    ];
     return Row(
-      children: kArenaShapes.map((s) {
-        final selected = _arenaShape == s;
+      children: options.map((o) {
+        final selected = _seriesWinsNeeded == o.$1;
         return Expanded(
           child: Padding(
             padding: const EdgeInsets.only(right: 8),
-            child: InkWell(
-              onTap: () {
-                setState(() => _arenaShape = s);
-                SoundFx.click();
-              },
-              child: Column(
-                children: [
-                  Container(
-                    height: 88,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: const BorderRadius.all(
-                          Radius.circular(12)),
-                      border: Border.all(
-                          color: selected
-                              ? DcColors.orange
-                              : DcColors.border,
-                          width: selected ? 2.5 : 1),
-                    ),
-                    child: ArenaShapePreview(
-                        shape: s, color: accent, size: 44),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(arenaShapeName(s),
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: selected
-                              ? DcColors.text
-                              : DcColors.muted)),
-                ],
+            child: SizedBox(
+              height: 56,
+              child: TextButton(
+                onPressed: () {
+                  setState(() => _seriesWinsNeeded = o.$1);
+                  SoundFx.click();
+                },
+                style: TextButton.styleFrom(
+                  backgroundColor:
+                      selected ? DcColors.orange : Colors.white,
+                  foregroundColor:
+                      selected ? Colors.white : DcColors.text,
+                  side: selected
+                      ? BorderSide.none
+                      : const BorderSide(
+                          color: DcColors.border, width: 1.5),
+                  shape: const StadiumBorder(),
+                  textStyle: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w900),
+                ),
+                child: Text(o.$2),
               ),
             ),
           ),
         );
       }).toList(),
+    );
+  }
+
+  /// 6 big arena tiles: the 5 real shapes + RANDOM (a drawn dice — a
+  /// random shape is picked when the battle starts).
+  Widget _buildArenaPicker(Color accent) {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
+          childAspectRatio: 1.1),
+      itemCount: kArenaShapes.length + 1,
+      itemBuilder: (context, i) {
+        final isRandom = i == kArenaShapes.length;
+        final shape = isRandom ? null : kArenaShapes[i];
+        final selected = isRandom ? _randomArena : (!_randomArena && _arenaShape == shape);
+        final name = isRandom ? 'Random' : arenaShapeName(shape!);
+        return InkWell(
+          onTap: () {
+            setState(() {
+              if (isRandom) {
+                _randomArena = true;
+              } else {
+                _randomArena = false;
+                _arenaShape = shape!;
+              }
+            });
+            SoundFx.click();
+          },
+          child: Column(
+            children: [
+              Container(
+                height: 88,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius:
+                      const BorderRadius.all(Radius.circular(12)),
+                  border: Border.all(
+                      color: selected ? DcColors.orange : DcColors.border,
+                      width: selected ? 2.5 : 1),
+                ),
+                child: isRandom
+                    ? CustomPaint(
+                        size: const Size(44, 44),
+                        painter: _DicePainter(accent),
+                      )
+                    : ArenaShapePreview(
+                        shape: shape!, color: accent, size: 44),
+              ),
+              const SizedBox(height: 6),
+              Text(name,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: selected ? DcColors.text : DcColors.muted)),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -508,6 +657,7 @@ class _SetupScreenState extends State<SetupScreen> {
   }
 
   /// Colour picker: big tiles with the colour NAME printed on them.
+  /// Rare colours show a lock until earned (tap explains how to unlock).
   Widget _buildColourGrid(PlayerConfig current) {
     return GridView.builder(
       shrinkWrap: true,
@@ -523,8 +673,13 @@ class _SetupScreenState extends State<SetupScreen> {
         final selected = current.colour.value == c.value;
         final takenBy = _active.indexWhere((p) => p.colour.value == c.value);
         final taken = takenBy >= 0 && takenBy != _editing;
-        final bg =
-            taken ? Color(c.value).withOpacity(0.35) : Color(c.value);
+        final rareKey = kRareColourUnlock[c.name];
+        final locked =
+            rareKey != null && !StatsService.isColourUnlocked(rareKey);
+        final bg = locked
+            ? Color(c.value).withOpacity(0.25)
+            : (taken ? Color(c.value).withOpacity(0.35) : Color(c.value));
+        final fg = contrastTextColor(Color(c.value));
         return InkWell(
           onTap: () => _pickColour(c),
           borderRadius: const BorderRadius.all(Radius.circular(10)),
@@ -535,23 +690,38 @@ class _SetupScreenState extends State<SetupScreen> {
               borderRadius:
                   const BorderRadius.all(Radius.circular(10)),
               border: Border.all(
-                  color: selected
-                      ? contrastTextColor(Color(c.value))
-                      : Colors.black26,
+                  color: selected ? fg : Colors.black26,
                   width: selected ? 3 : 1),
             ),
-            child: Text(
-              taken
-                  ? '✕ ${c.name}'
-                  : (selected ? '✓ ${c.name}' : c.name),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: contrastTextColor(Color(c.value))),
-            ),
+            child: locked
+                ? Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.lock, size: 13, color: fg),
+                      const SizedBox(width: 3),
+                      Flexible(
+                        child: Text(c.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: fg)),
+                      ),
+                    ],
+                  )
+                : Text(
+                    taken
+                        ? '✕ ${c.name}'
+                        : (selected ? '✓ ${c.name}' : c.name),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: fg),
+                  ),
           ),
         );
       },
@@ -608,4 +778,35 @@ class _SetupScreenState extends State<SetupScreen> {
       },
     );
   }
+}
+
+/// Drawn dice icon (for the RANDOM arena tile): a rounded square with
+/// five white dots — drawn paths, never an emoji or a photo.
+class _DicePainter extends CustomPainter {
+  _DicePainter(this.color);
+  final Color color;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromLTWH(w * 0.12, h * 0.12, w * 0.76, h * 0.76),
+            Radius.circular(w * 0.12)),
+        Paint()..color = color);
+    final dot = Paint()..color = Colors.white;
+    const spots = <(double, double)>[
+      (0.3, 0.3),
+      (0.7, 0.3),
+      (0.5, 0.5),
+      (0.3, 0.7),
+      (0.7, 0.7),
+    ];
+    for (final (fx, fy) in spots) {
+      canvas.drawCircle(Offset(w * fx, h * fy), w * 0.06, dot);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DicePainter old) => old.color != color;
 }

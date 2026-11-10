@@ -25,7 +25,7 @@ class HowToPlayScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: const [
               _Step('1', 'Pick your players',
-                  'Choose 2, 3 or 4 players. Each player picks a name, a colour (60 colours) and a ball shape (30 shapes). No two players can pick the same colour.'),
+                  'Choose 2, 3 or 4 players. Each player picks a name, a colour (62 colours, including 2 rare ones to unlock) and a ball shape (30 shapes). No two players can pick the same colour.'),
               _Step('2', 'Steer your ball',
                   'Your ball moves on its own. Touch anywhere in your zone and drag to steer it — a joystick appears where your finger touches. 2 players: left half vs right half. 3 players: three vertical thirds. 4 players: four corners. All players can steer at the same time — use different fingers.'),
               _Step('3', 'Paint the arena',
@@ -49,6 +49,24 @@ class HowToPlayScreen extends StatelessWidget {
               DcSectionTitle('POWER-UPS'),
               SizedBox(height: 10),
               _PowerUpList(),
+              SizedBox(height: 12),
+              DcCard(
+                child: Row(
+                  children: const [
+                    Icon(Icons.card_giftcard,
+                        size: 30, color: Color(0xFF9C27B0)),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                          'MYSTERY TILE — Sometimes a purple gift box appears instead of a normal power-up. Drive over it to reveal a random power-up!',
+                          style: TextStyle(
+                              fontSize: 15,
+                              height: 1.4,
+                              color: DcColors.text)),
+                    ),
+                  ],
+                ),
+              ),
               SizedBox(height: 16),
               DcSectionTitle('TIPS'),
               SizedBox(height: 8),
