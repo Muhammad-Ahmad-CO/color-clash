@@ -8,8 +8,11 @@ import 'screens/home_screen.dart';
 import 'screens/setup_screen.dart';
 import 'screens/how_to_play_screen.dart';
 import 'screens/game_screen.dart';
+import 'screens/history_screen.dart';
+import 'screens/achievements_screen.dart';
 import 'screens/modes_screen.dart';
 import 'screens/shop_screen.dart';
+import 'widgets/dot_chrome.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,25 +29,42 @@ class ColorCoverApp extends StatelessWidget {
       title: 'Color Cover',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF1B1A1F),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFFFD6EA3),
-          secondary: Color(0xFF7C4DFF),
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: DcColors.page,
+        colorScheme: const ColorScheme.light(
+          primary: DcColors.orange,
+          secondary: Color(0xFFFD6EA3),
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.white,
+          foregroundColor: DcColors.text,
+          elevation: 0,
+          centerTitle: false,
+          titleTextStyle: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              color: DcColors.text),
         ),
         useMaterial3: true,
         textTheme: const TextTheme(
-          headlineLarge: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1),
-          titleLarge: TextStyle(fontWeight: FontWeight.w800),
-          bodyLarge: TextStyle(fontSize: 17),
-          bodyMedium: TextStyle(fontSize: 16),
+          headlineLarge: TextStyle(
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1,
+              color: DcColors.text),
+          titleLarge: TextStyle(
+              fontWeight: FontWeight.w800, color: DcColors.text),
+          bodyLarge: TextStyle(fontSize: 17, color: DcColors.text),
+          bodyMedium: TextStyle(fontSize: 16, color: DcColors.text),
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-            textStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-            shape: const RoundedRectangleBorder(
-                borderRadius: BorderRadius.zero),
+            backgroundColor: DcColors.orange,
+            foregroundColor: Colors.white,
+            padding:
+                const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+            textStyle:
+                const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+            shape: const StadiumBorder(),
           ),
         ),
       ),
@@ -54,6 +74,8 @@ class ColorCoverApp extends StatelessWidget {
         '/home': (_) => const HomeScreen(),
         '/how': (_) => const HowToPlayScreen(),
         '/modes': (_) => const ModesScreen(),
+        '/history': (_) => const HistoryScreen(),
+        '/achievements': (_) => const AchievementsScreen(),
         '/shop': (_) => const ShopScreen(),
       },
       onGenerateRoute: (settings) {

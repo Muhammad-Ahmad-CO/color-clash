@@ -1,10 +1,13 @@
-// Color Cover — Coins + Shop (separate section, NOT in Modes).
-// Win a match = 50 coins, finish a match = 10 coins. Coins are stored
-// on the phone. Shop sells ball trails: Glow, Fire, Rainbow, Golden.
+// Color Cover — Coins + Shop (Dot Clash chrome, v3b).
+// Light grey page, off-white cards, near-black text, orange pill
+// BUY/EQUIP buttons, white pill secondary. Win a match = 50 coins,
+// finish a match = 10 coins. Coins are stored on the phone. Shop sells
+// ball trails: Glow, Fire, Rainbow, Golden. Bottom nav (Shop active).
 import 'package:flutter/material.dart';
 import '../data/game_data.dart';
 import '../game/coins.dart';
 import '../game/sound.dart';
+import '../widgets/dot_chrome.dart';
 
 class ShopScreen extends StatefulWidget {
   const ShopScreen({super.key});
@@ -26,38 +29,36 @@ class _ShopScreenState extends State<ShopScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: DcColors.page,
       appBar: AppBar(
-        title: const Text('SHOP', style: TextStyle(fontWeight: FontWeight.w900)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+        title: const Text('SHOP',
+            style: TextStyle(fontWeight: FontWeight.w900)),
       ),
+      bottomNavigationBar: const DotBottomNav(current: DcTab.shop),
       body: SafeArea(
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? const Center(
+                child: CircularProgressIndicator(color: DcColors.orange))
             : ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
                 children: [
-                  Container(
+                  DcCard(
                     padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFCA28).withOpacity(0.2),
-                      border: Border.all(color: const Color(0xFFFFCA28), width: 1.5),
-                    ),
                     child: Row(
                       children: [
                         Container(
-                          width: 40,
-                          height: 40,
+                          width: 44,
+                          height: 44,
                           decoration: const BoxDecoration(
-                            color: Color(0xFFFFCA28),
+                            color: DcColors.gold,
                             shape: BoxShape.circle,
                           ),
                           alignment: Alignment.center,
                           child: const Text('C',
                               style: TextStyle(
-                                  fontSize: 22,
+                                  fontSize: 24,
                                   fontWeight: FontWeight.w900,
-                                  color: Color(0xFF1A0A00))),
+                                  color: DcColors.text)),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -65,29 +66,34 @@ class _ShopScreenState extends State<ShopScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text('${CoinsService.coins} coins',
-                                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
-                              const Text('Win a match = 50 coins. Finish a match = 10 coins.',
-                                  style: TextStyle(color: Colors.white70, fontSize: 14)),
+                                  style: const TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.w900,
+                                      color: DcColors.text)),
+                              const Text(
+                                  'Win a match = 50 coins. Finish a match = 10 coins.',
+                                  style: TextStyle(
+                                      color: DcColors.muted, fontSize: 14)),
                             ],
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  const Text('Ball trails — buy once, use forever',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 18),
+                  const DcSectionTitle('BALL TRAILS'),
+                  const SizedBox(height: 4),
+                  const Text('Buy once, use forever',
+                      style:
+                          TextStyle(fontSize: 15, color: DcColors.muted)),
+                  const SizedBox(height: 12),
                   ...kShopItems.map((item) {
                     final owned = CoinsService.owned.contains(item.id);
-                    final equipped = CoinsService.equippedTrail == item.trail;
-                    return Card(
-                      color: Colors.white10,
-                      shape: const RoundedRectangleBorder(
-                          borderRadius: BorderRadius.zero),
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
+                    final equipped =
+                        CoinsService.equippedTrail == item.trail;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: DcCard(
                         child: Row(
                           children: [
                             Expanded(
@@ -95,70 +101,91 @@ class _ShopScreenState extends State<ShopScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(item.name,
-                                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                                      style: const TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w900,
+                                          color: DcColors.text)),
                                   Text(item.desc,
-                                      style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                                      style: const TextStyle(
+                                          color: DcColors.muted,
+                                          fontSize: 14)),
                                   const SizedBox(height: 6),
-                                  Text(owned ? (equipped ? 'EQUIPPED ✓' : 'OWNED') : '${item.cost} COINS',
+                                  Text(
+                                      owned
+                                          ? (equipped
+                                              ? 'EQUIPPED ✓'
+                                              : 'OWNED')
+                                          : '${item.cost} COINS',
                                       style: TextStyle(
                                           fontWeight: FontWeight.w800,
-                                          color: owned ? Colors.greenAccent : const Color(0xFFFFCA28))),
+                                          color: owned
+                                              ? Colors.green.shade700
+                                              : DcColors.orangeDark)),
                                 ],
                               ),
                             ),
-                            ElevatedButton(
-                              onPressed: () async {
-                                if (owned) {
-                                  await CoinsService.equip(item.trail);
-                                  setState(() {});
-                                  SoundFx.click();
-                                } else {
-                                  final ok = await CoinsService.buy(item);
-                                  if (!mounted) return;
-                                  if (ok) {
+                            const SizedBox(width: 12),
+                            SizedBox(
+                              width: 112,
+                              height: 46,
+                              child: TextButton(
+                                onPressed: () async {
+                                  if (owned) {
                                     await CoinsService.equip(item.trail);
                                     setState(() {});
-                                    SoundFx.pickup();
+                                    SoundFx.click();
                                   } else {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                          content: Text('Not enough coins yet. Win matches to earn coins!')),
-                                    );
+                                    final ok =
+                                        await CoinsService.buy(item);
+                                    if (!mounted) return;
+                                    if (ok) {
+                                      await CoinsService.equip(item.trail);
+                                      setState(() {});
+                                      SoundFx.pickup();
+                                    } else {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        const SnackBar(
+                                            content: Text(
+                                                'Not enough coins yet. Win matches to earn coins!')),
+                                      );
+                                    }
                                   }
-                                }
-                              },
-                              style: ElevatedButton.styleFrom(
-                                  backgroundColor: equipped
-                                      ? Colors.green
-                                      : const Color(0xFFFF7BAC),
-                                  foregroundColor: Colors.white),
-                              child: Text(equipped ? 'EQUIPPED' : (owned ? 'EQUIP' : 'BUY')),
+                                },
+                                style: TextButton.styleFrom(
+                                    backgroundColor: equipped
+                                        ? DcColors.text
+                                        : DcColors.orange,
+                                    foregroundColor: Colors.white,
+                                    shape: const StadiumBorder(),
+                                    textStyle: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w800)),
+                                child: Text(equipped
+                                    ? 'EQUIPPED'
+                                    : (owned ? 'EQUIP' : 'BUY')),
+                              ),
                             ),
                           ],
                         ),
                       ),
                     );
                   }),
-                  const SizedBox(height: 8),
-                  OutlinedButton(
+                  const SizedBox(height: 4),
+                  DcSecondaryButton(
+                    label: 'USE NORMAL TRAIL',
                     onPressed: () async {
                       await CoinsService.equip(TrailType.none);
                       setState(() {});
                       SoundFx.click();
                     },
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      side: const BorderSide(color: Colors.white54),
-                      shape: const RoundedRectangleBorder(
-                          borderRadius: BorderRadius.zero),
-                    ),
-                    child: const Text('USE NORMAL TRAIL',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
                   ),
-                  const SizedBox(height: 12),
-                  const Text('Tip: the Rainbow Ball changes colour while you play.',
+                  const SizedBox(height: 14),
+                  const Text(
+                      'Tip: the Rainbow Ball changes colour while you play.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white54, fontSize: 14)),
+                      style:
+                          TextStyle(color: DcColors.muted, fontSize: 14)),
                 ],
               ),
       ),

@@ -1,10 +1,13 @@
 // Color Cover — Game screen (reference look, REFERENCE_UI_SPEC.md).
 // Animated gradient background derived from the player colours, a 3:4
 // arena floating in it, sharp full-width power-up banners stacked in the
-// top margin, thin bottom territory bars, invisible drag steering
-// (multi-touch zones, no joysticks), and the end card as a flat overlay
+// top margin, thin bottom territory bars, and the end card as a flat overlay
 // on the dimmed playfield. No timer, no names, no pause/mute HUD, no %
 // numbers, no emoji anywhere on the match screen.
+// Steering: a VISIBLE floating joystick appears where the player's finger
+// touches down (dynamic origin) and follows the finger — the user asked
+// for a joystick they can see (03:51 PKT), so the invisible drag of v2
+// is replaced by a visible control on top of the same anchor logic.
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -13,7 +16,10 @@ import '../game/coins.dart';
 import '../game/engine.dart';
 import '../game/match_theme.dart';
 import '../game/sound.dart';
+import '../game/stats.dart';
 import '../widgets/ball_painter.dart';
+import '../widgets/dot_chrome.dart';
+import '../widgets/floating_joystick.dart';
 
 class GameScreen extends StatefulWidget {
   const GameScreen({super.key, required this.config});
@@ -33,10 +39,15 @@ class _GameScreenState extends State<GameScreen>
   bool _showEnd = false;
   int _coinsEarned = 0;
   bool _coinsDone = false;
+  bool _statsDone = false; // match recorded once per match.
+  List<String> _newAchievements = <String>[];
   final GlobalKey _arenaKey = GlobalKey();
 
-  // Active drag pointers: pointer id -> (player, anchor position).
-  final Map<int, _DragPointer> _pointers = <int, _DragPointer>{};
+  // Active joysticks: pointer id -> joystick (player, touch-down origin,
+  // current finger position). One per active finger.
+  final Map<int, ActiveJoystick> _pointers = <int, ActiveJoystick>{};
+  // One-line steer hint, shown until the first successful steer.
+  bool _showSteerHint = true;
 
   List<Color> get _territoryColors =>
       widget.players.map((p) => Color(p.colour.value)).toList();
@@ -66,12 +77,36 @@ class _GameScreenState extends State<GameScreen>
                   (_engine.winnerIndex() == 0 ||
                       _engine.winnerIndex() == 2));
           CoinsService.awardMatch(won: won).then((earned) {
-            if (mounted) {
-              setState(() {
-                _coinsEarned = earned;
-                _coinsDone = true;
-              });
-            }
+            if (!mounted) return;
+            setState(() {
+              _coinsEarned = earned;
+              _coinsDone = true;
+            });
+            // Record the match (history + lifetime stats + achievements)
+            // once per match; rewards for newly unlocked badges are paid
+            // in coins by StatsService.
+            if (_statsDone) return;
+            _statsDone = true;
+            StatsService.recordMatch(
+              mode: modePackName(widget.config.pack),
+              players: widget.players.map((p) => p.name).toList(),
+              winner: widget.players[_engine.winnerIndex()].name,
+              durationSeconds: _engine.time.round(),
+              tiles: List<int>.from(_engine.tilesPainted),
+              powerUps: List<int>.from(_engine.powerUpsCollected),
+              coinsEarned: earned,
+              won: won,
+              vsCrazyWin: won &&
+                  widget.config.mode == GameMode.vsBot &&
+                  widget.config.botDifficulty == BotDifficulty.crazy,
+              playerCount: widget.players.length,
+              suddenDeath: widget.config.pack == ModePack.suddenDeath ||
+                  widget.config.pack == ModePack.allChaos,
+            ).then((unlocked) {
+              if (mounted && unlocked.isNotEmpty) {
+                setState(() => _newAchievements = unlocked);
+              }
+            });
           });
           setState(() => _showEnd = true);
         }
@@ -86,9 +121,17 @@ class _GameScreenState extends State<GameScreen>
       _showEnd = false;
       _coinsEarned = 0;
       _coinsDone = false;
+      _statsDone = false;
+      _newAchievements = <String>[];
       _paused = false;
     });
     _startLoop();
+  }
+
+  void _changeSetup() {
+    Navigator.pushNamedAndRemoveUntil(
+        context, '/setup', (_) => false,
+        arguments: widget.config.pack);
   }
 
   @override
@@ -98,9 +141,12 @@ class _GameScreenState extends State<GameScreen>
     super.dispose();
   }
 
-  // ---- invisible drag steering -------------------------------------------
+  // ---- visible floating joystick steering -------------------------------
   // Zones: 2 players = left/right halves; 3 players = vertical thirds;
   // 4 players = 2x2 quadrants. VS COMPUTER: the whole arena steers P1.
+  // The joystick appears where the finger touches down (dynamic origin)
+  // and the knob follows the finger; steering = knob offset direction,
+  // clamped to kJoystickRadius. It only exists while a finger is down.
 
   int _playerForLocal(Offset local, Size arenaSize) {
     final n = widget.players.length;
@@ -128,17 +174,20 @@ class _GameScreenState extends State<GameScreen>
     final local = _arenaLocal(e.position);
     final size = _arenaSize();
     if (size == Size.zero) return;
-    _pointers[e.pointer] = _DragPointer(_playerForLocal(local, size), local);
+    _pointers[e.pointer] = ActiveJoystick(
+        player: _playerForLocal(local, size), origin: local, current: local);
   }
 
   void _onPointerMove(PointerMoveEvent e) {
     final p = _pointers[e.pointer];
     if (p == null || _showEnd || _paused) return;
     final local = _arenaLocal(e.position);
-    final d = local - p.anchor;
+    p.current = local;
+    final d = local - p.origin;
     if (d.distance < 8) return;
     final dir = d / d.distance;
     _engine.steering[p.player] = Point(dir.dx, dir.dy);
+    if (_showSteerHint) _showSteerHint = false;
   }
 
   void _onPointerUp(PointerUpEvent e) => _clearPointer(e.pointer);
@@ -242,6 +291,13 @@ class _GameScreenState extends State<GameScreen>
                   trail: widget.config.trail),
               size: Size(arenaW, arenaH),
             ),
+            // Visible floating joysticks (one per active finger), drawn
+            // above the tiles and below the pause/end overlays.
+            CustomPaint(
+              painter: FloatingJoystickPainter(
+                  _pointers.values.toList(), _territoryColors),
+              size: Size(arenaW, arenaH),
+            ),
             if (_paused && !_showEnd) _PauseOverlay(
               onResume: () => setState(() => _paused = false),
               onQuit: () => Navigator.pushNamedAndRemoveUntil(
@@ -252,7 +308,9 @@ class _GameScreenState extends State<GameScreen>
               players: widget.players,
               coinsEarned: _coinsEarned,
               coinsDone: _coinsDone,
-              onPlayAgain: _restartMatch,
+              newAchievements: _newAchievements,
+              onRematch: _restartMatch,
+              onChangeSetup: _changeSetup,
               onHome: () => Navigator.pushNamedAndRemoveUntil(
                   context, '/home', (_) => false),
             ),
@@ -264,6 +322,30 @@ class _GameScreenState extends State<GameScreen>
 
   Widget _buildExtras() {
     final children = <Widget>[];
+    if (_showSteerHint && !_showEnd) {
+      children.add(Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Align(
+          alignment: Alignment.center,
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.92),
+              borderRadius:
+                  const BorderRadius.all(Radius.circular(999)),
+            ),
+            child: const Text('TOUCH AND DRAG TO STEER',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
+                    letterSpacing: 1,
+                    color: DcColors.text)),
+          ),
+        ),
+      ));
+    }
     if (_engine.chaosEnabled &&
         _engine.chaosName.isNotEmpty &&
         _engine.time < _engine.chaosUntil) {
@@ -338,8 +420,7 @@ class _GameScreenState extends State<GameScreen>
                         : Colors.white70,
                     padding:
                         const EdgeInsets.symmetric(horizontal: 10),
-                    shape: const RoundedRectangleBorder(
-                        borderRadius: BorderRadius.zero),
+                    shape: const StadiumBorder(),
                     textStyle: const TextStyle(
                         fontSize: 12, fontWeight: FontWeight.w900),
                   ),
@@ -351,17 +432,15 @@ class _GameScreenState extends State<GameScreen>
         ));
       }
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: children,
+    // Scrollable so a hint line + chaos + sudden-death + up to 4 ultimate
+    // meters can never overflow the fixed-height extras zone.
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
+      ),
     );
   }
-}
-
-class _DragPointer {
-  _DragPointer(this.player, this.anchor);
-  final int player;
-  final Offset anchor;
 }
 
 /// Stacked power-up banners: sharp full-arena-width bars in the top
@@ -412,7 +491,9 @@ class _BannerZone extends StatelessWidget {
 
 /// Bottom territory bar: one thin row per player — name label + ball dot +
 /// translucent track with a fill proportional to the share + a fixed tick.
-/// No percentage numbers (the reference prints none).
+/// No percentage numbers (the reference prints none). Dot Clash chrome:
+/// the rows sit in a clean off-white card instead of floating on the
+/// gradient — same content, same reference numbers (none).
 class _TerritoryBar extends StatelessWidget {
   const _TerritoryBar(
       {required this.percentages,
@@ -424,8 +505,14 @@ class _TerritoryBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
+    return Container(
       width: width,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: DcColors.card,
+        borderRadius: const BorderRadius.all(Radius.circular(12)),
+        border: Border.all(color: DcColors.border),
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: List.generate(players.length, (i) {
@@ -441,7 +528,7 @@ class _TerritoryBar extends StatelessWidget {
                       style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w900,
-                          color: Colors.white),
+                          color: DcColors.text),
                       overflow: TextOverflow.ellipsis),
                 ),
                 Container(
@@ -456,7 +543,7 @@ class _TerritoryBar extends StatelessWidget {
                     builder: (context, c) {
                       return Container(
                         height: 10,
-                        color: Colors.white.withOpacity(0.18),
+                        color: Colors.black.withOpacity(0.08),
                         child: Stack(
                           children: [
                             FractionallySizedBox(
@@ -469,7 +556,7 @@ class _TerritoryBar extends StatelessWidget {
                               bottom: 0,
                               width: 2,
                               child: Container(
-                                  color: Colors.white.withOpacity(0.6)),
+                                  color: Colors.black.withOpacity(0.3)),
                             ),
                           ],
                         ),
@@ -514,8 +601,7 @@ class _PauseOverlay extends StatelessWidget {
                 backgroundColor: Colors.white,
                 foregroundColor: Colors.black,
                 padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.zero),
+                shape: const StadiumBorder(),
                 textStyle: const TextStyle(
                     fontSize: 16, fontWeight: FontWeight.w900),
               ),
@@ -531,8 +617,7 @@ class _PauseOverlay extends StatelessWidget {
                 backgroundColor: Colors.white24,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.zero),
+                shape: const StadiumBorder(),
                 textStyle: const TextStyle(
                     fontSize: 16, fontWeight: FontWeight.w900),
               ),
@@ -547,21 +632,28 @@ class _PauseOverlay extends StatelessWidget {
 
 /// End card: the whole playfield dims to near-black, then a flat
 /// winner-colour rectangle (sharp corners) with a drawn crown,
-/// "<NAME> DOMINATES!" and the match duration. No confetti, no emoji.
+/// "<NAME> DOMINATES!" and the match duration. Below it: match stats
+/// (tiles painted, power-ups, biggest lead), newly unlocked achievements,
+/// coins, and three actions — REMATCH (same setup), CHANGE SETUP (same
+/// mode, new picks), HOME. No confetti, no emoji.
 class _EndCardOverlay extends StatelessWidget {
   const _EndCardOverlay({
     required this.engine,
     required this.players,
     required this.coinsEarned,
     required this.coinsDone,
-    required this.onPlayAgain,
+    required this.newAchievements,
+    required this.onRematch,
+    required this.onChangeSetup,
     required this.onHome,
   });
   final GameEngine engine;
   final List<PlayerConfig> players;
   final int coinsEarned;
   final bool coinsDone;
-  final VoidCallback onPlayAgain;
+  final List<String> newAchievements;
+  final VoidCallback onRematch;
+  final VoidCallback onChangeSetup;
   final VoidCallback onHome;
 
   @override
@@ -577,83 +669,177 @@ class _EndCardOverlay extends StatelessWidget {
         builder: (context, c) {
           final cardW = c.maxWidth * 0.66;
           final cardH = c.maxHeight * 0.24;
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: cardW,
-                height: cardH,
-                color: bg,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CustomPaint(
-                      size: const Size(28, 20),
-                      painter: _CrownPainter(fg),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      engine.winnerLabel(),
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          fontSize: 19,
-                          fontWeight: FontWeight.w900,
-                          color: fg),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      engine.matchDurationLabel(),
-                      style: TextStyle(fontSize: 12, color: fg),
-                    ),
-                  ],
+          return SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: cardW,
+                  height: cardH,
+                  color: bg,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CustomPaint(
+                        size: const Size(28, 20),
+                        painter: _CrownPainter(fg),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        engine.winnerLabel(),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w900,
+                            color: fg),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        engine.matchDurationLabel(),
+                        style: TextStyle(fontSize: 12, color: fg),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              if (coinsDone)
+                // Match stats (Dot Clash-style one-line rows).
                 Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: Text('+$coinsEarned COINS  (TOTAL: ${CoinsService.coins})',
-                      style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFFFFCA28))),
-                ),
-              const SizedBox(height: 18),
-              SizedBox(
-                width: cardW,
-                child: TextButton(
-                  onPressed: onPlayAgain,
-                  style: TextButton.styleFrom(
-                    backgroundColor: bg,
-                    foregroundColor: fg,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: const RoundedRectangleBorder(
-                        borderRadius: BorderRadius.zero),
-                    textStyle: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w900),
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Column(
+                    children: [
+                      _StatLine(
+                        'TILES PAINTED',
+                        players
+                            .asMap()
+                            .entries
+                            .map((e) =>
+                                '${e.value.name.toUpperCase()} ${engine.tilesPainted[e.key]}')
+                            .join('  ·  '),
+                      ),
+                      _StatLine(
+                        'POWER-UPS',
+                        players
+                            .asMap()
+                            .entries
+                            .map((e) =>
+                                '${e.value.name.toUpperCase()} ${engine.powerUpsCollected[e.key]}')
+                            .join('  ·  '),
+                      ),
+                      _StatLine('BIGGEST LEAD',
+                          '${engine.biggestLead} tiles'),
+                    ],
                   ),
-                  child: const Text('PLAY AGAIN'),
                 ),
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                width: cardW,
-                child: TextButton(
-                  onPressed: onHome,
-                  style: TextButton.styleFrom(
-                    backgroundColor: Colors.white24,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: const RoundedRectangleBorder(
-                        borderRadius: BorderRadius.zero),
-                    textStyle: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w900),
+                if (newAchievements.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Column(
+                      children: newAchievements.map((id) {
+                        final a = achievementById(id);
+                        return Text(
+                          'ACHIEVEMENT UNLOCKED: ${a.name.toUpperCase()}  (+${a.reward} COINS)',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFFFFCA28)),
+                        );
+                      }).toList(),
+                    ),
                   ),
-                  child: const Text('HOME'),
+                if (coinsDone)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Text('+$coinsEarned COINS  (TOTAL: ${CoinsService.coins})',
+                        style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFFFFCA28))),
+                  ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: cardW,
+                  child: TextButton(
+                    onPressed: onRematch,
+                    style: TextButton.styleFrom(
+                      backgroundColor: bg,
+                      foregroundColor: fg,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: const StadiumBorder(),
+                      textStyle: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w900),
+                    ),
+                    child: const Text('REMATCH'),
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: cardW,
+                  child: TextButton(
+                    onPressed: onChangeSetup,
+                    style: TextButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: const StadiumBorder(),
+                      textStyle: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w900),
+                    ),
+                    child: const Text('CHANGE SETUP'),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: cardW,
+                  child: TextButton(
+                    onPressed: onHome,
+                    style: TextButton.styleFrom(
+                      backgroundColor: Colors.white24,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: const StadiumBorder(),
+                      textStyle: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w900),
+                    ),
+                    child: const Text('HOME'),
+                  ),
+                ),
+              ],
+            ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// One match-stat line: small grey label + white value.
+class _StatLine extends StatelessWidget {
+  const _StatLine(this.label, this.value);
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+                text: '$label  ',
+                style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white60)),
+            TextSpan(
+                text: value,
+                style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white)),
+          ],
+        ),
+        textAlign: TextAlign.center,
       ),
     );
   }

@@ -1,6 +1,6 @@
 // Color Cover — static game data.
-// Counts are fixed by design: 54 colours, 24 ball shapes,
-// 10 base power-ups + Bomb Ball = 11 total power-ups.
+// Counts are fixed by design: 60 colours, 30 ball shapes,
+// 12 base power-ups + Bomb Ball = 13 total power-ups.
 // Do not change the counts without updating Setup + README.
 
 /// One pickable colour: a human name + an ARGB hex value.
@@ -10,9 +10,9 @@ class GameColor {
   final int value; // 0xFFRRGGBB
 }
 
-const int kColourCount = 54;
+const int kColourCount = 60;
 
-/// EXACTLY 54 colours. Names are unique, hex values are unique.
+/// EXACTLY 60 colours. Names are unique, hex values are unique.
 const List<GameColor> kColours = [
   GameColor('Indigo', 0xFF3F2A7A),
   GameColor('Pink', 0xFFFF7BAC),
@@ -68,9 +68,15 @@ const List<GameColor> kColours = [
   GameColor('Denim', 0xFF3D5AFE),
   GameColor('Ice Blue', 0xFFB3E5FC),
   GameColor('Sunset', 0xFFFF5722),
+  GameColor('Maroon', 0xFF800000),
+  GameColor('Burgundy', 0xFF800020),
+  GameColor('Copper', 0xFFB87333),
+  GameColor('Khaki', 0xFFC3B091),
+  GameColor('Orchid', 0xFFDA70D6),
+  GameColor('Electric Blue', 0xFF7DF9FF),
 ];
 
-/// The 24 ball shapes, drawn with CustomPainter (no image assets).
+/// The 30 ball shapes, drawn with CustomPainter (no image assets).
 enum BallShape {
   circle,
   square,
@@ -96,9 +102,15 @@ enum BallShape {
   pyramid,
   snowflake,
   smiley,
+  clover,
+  rocket,
+  crown,
+  anchor,
+  bell,
+  gem,
 }
 
-const int kShapeCount = 24;
+const int kShapeCount = 30;
 
 const List<BallShape> kShapes = [
   BallShape.circle,
@@ -125,6 +137,12 @@ const List<BallShape> kShapes = [
   BallShape.pyramid,
   BallShape.snowflake,
   BallShape.smiley,
+  BallShape.clover,
+  BallShape.rocket,
+  BallShape.crown,
+  BallShape.anchor,
+  BallShape.bell,
+  BallShape.gem,
 ];
 
 String shapeName(BallShape s) {
@@ -177,6 +195,18 @@ String shapeName(BallShape s) {
       return 'Snowflake';
     case BallShape.smiley:
       return 'Smiley';
+    case BallShape.clover:
+      return 'Clover';
+    case BallShape.rocket:
+      return 'Rocket';
+    case BallShape.crown:
+      return 'Crown';
+    case BallShape.anchor:
+      return 'Anchor';
+    case BallShape.bell:
+      return 'Bell';
+    case BallShape.gem:
+      return 'Gem';
   }
 }
 
@@ -205,9 +235,9 @@ class PowerUpDef {
   final int value;
 }
 
-const int kPowerUpCount = 11;
+const int kPowerUpCount = 13;
 
-/// 10 base power-ups + Bomb Ball (added 2026-11-10, "Sab kuch daal do").
+/// 10 base power-ups + Bomb Ball + FREEZE + MAGNET = 13 total.
 const List<PowerUpDef> kPowerUps = [
   PowerUpDef('speed', 'SPEED +33%', 'Your ball is 33% faster for 10 seconds.', 'S', 0xFF29B6F6),
   PowerUpDef('nitro', 'NITRO', 'Very fast with a bright trail for 8 seconds.', 'N', 0xFFFF6D00),
@@ -220,6 +250,8 @@ const List<PowerUpDef> kPowerUps = [
   PowerUpDef('tidal', 'TIDAL WAVE', 'Instantly paints your full row and column.', 'T', 0xFF00BCD4),
   PowerUpDef('wormhole', 'WORMHOLE', 'Teleports your ball to a random tile.', 'H', 0xFF7C4DFF),
   PowerUpDef('bomb', 'BOMB BALL', 'Explodes a 5x5 area to your colour!', 'B', 0xFF212121),
+  PowerUpDef('freeze', 'FREEZE', 'Freeze all enemy balls for 3 seconds.', 'Z', 0xFF00E5FF),
+  PowerUpDef('magnet', 'MAGNET', 'Pull nearby power-up tiles to your ball for 8 seconds.', 'M', 0xFFFFD54F),
 ];
 
 PowerUpDef powerUpById(String id) =>
@@ -346,7 +378,7 @@ class MatchConfig {
   final ModePack pack;
 }
 
-/// Modes section: 9 selectable mode cards (8 modes + All Chaos).
+/// Modes section: 10 selectable mode cards (9 + Time Attack).
 /// Tapping a card opens Setup with that mode's rule active.
 enum ModePack {
   ultimate,
@@ -358,6 +390,7 @@ enum ModePack {
   battleRoyale,
   vsBot,
   allChaos,
+  timeAttack,
 }
 
 const List<ModePack> kModePacks = [
@@ -370,6 +403,7 @@ const List<ModePack> kModePacks = [
   ModePack.team2v2,
   ModePack.battleRoyale,
   ModePack.allChaos,
+  ModePack.timeAttack,
 ];
 
 String modePackName(ModePack p) {
@@ -392,6 +426,8 @@ String modePackName(ModePack p) {
       return 'VS COMPUTER';
     case ModePack.allChaos:
       return 'Sab Kuch / All Chaos';
+    case ModePack.timeAttack:
+      return 'Time Attack';
   }
 }
 
@@ -415,6 +451,8 @@ String modePackDesc(ModePack p) {
       return 'You vs the computer: Easy, Medium or Crazy.';
     case ModePack.allChaos:
       return 'Modes 1-5 together: Ultimate, Bomb, Golden, Sudden Death, Chaos.';
+    case ModePack.timeAttack:
+      return '60-second blitz. Most tiles at the buzzer wins.';
   }
 }
 

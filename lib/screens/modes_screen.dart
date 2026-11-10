@@ -1,9 +1,15 @@
-// Color Cover — Modes screen. Nine mode cards in a flat, sharp,
-// heavy-type style. VS COMPUTER is first and featured (bigger, pink).
+// Color Cover — Modes screen (Dot Clash chrome, v3b).
+// Light grey page, off-white cards with a coloured number tile, heavy
+// near-black titles, muted descriptions. VS COMPUTER is first and
+// featured: a full orange card, bigger, with "YOU vs THE COMPUTER".
+// Every card is tappable anywhere. Bottom nav (Play active).
 // No emoji anywhere — numbers and colour tiles instead.
 import 'package:flutter/material.dart';
 import '../data/game_data.dart';
+import '../game/match_theme.dart';
 import '../game/sound.dart';
+import '../widgets/ball_painter.dart';
+import '../widgets/dot_chrome.dart';
 
 class ModesScreen extends StatelessWidget {
   const ModesScreen({super.key});
@@ -18,40 +24,28 @@ class ModesScreen extends StatelessWidget {
     Color(0xFFFF7043),
     Color(0xFF66BB6A),
     Color(0xFFE56E52),
-  ];
-
-  static const List<Color> _cardText = [
-    Color(0xFF210044),
-    Colors.white,
-    Color(0xFF1A0A00),
-    Color(0xFF1A0A00),
-    Colors.white,
-    Colors.white,
-    Colors.white,
-    Colors.white,
-    Colors.white,
+    Color(0xFFAB47BC), // Time Attack — purple.
   ];
 
   @override
   Widget build(BuildContext context) {
     final packs = kModePacks;
     return Scaffold(
-      backgroundColor: const Color(0xFF1B1A1F),
+      backgroundColor: DcColors.page,
       appBar: AppBar(
         title: const Text('CHOOSE A MODE',
             style: TextStyle(fontWeight: FontWeight.w900)),
-        backgroundColor: const Color(0xFF1B1A1F),
-        foregroundColor: Colors.white,
-        elevation: 0,
       ),
+      bottomNavigationBar: const DotBottomNav(current: DcTab.play),
       body: ListView.builder(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         itemCount: packs.length,
         itemBuilder: (context, index) {
           final pack = packs[index];
           final featured = index == 0;
-          final bg = _cardColors[index];
-          final fg = _cardText[index];
+          final tileColor = _cardColors[index];
+          final tileText = contrastTextColor(tileColor);
+          final titleColor = DcColors.text;
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: InkWell(
@@ -59,23 +53,38 @@ class ModesScreen extends StatelessWidget {
                 SoundFx.click();
                 Navigator.pushNamed(context, '/setup', arguments: pack);
               },
+              borderRadius:
+                  const BorderRadius.all(Radius.circular(16)),
               child: Container(
-                color: bg,
                 padding: EdgeInsets.symmetric(
-                    horizontal: 16, vertical: featured ? 22 : 16),
+                    horizontal: 16, vertical: featured ? 24 : 18),
+                decoration: BoxDecoration(
+                  color: featured ? DcColors.orange : DcColors.card,
+                  borderRadius:
+                      const BorderRadius.all(Radius.circular(16)),
+                  border: Border.all(
+                      color: featured
+                          ? DcColors.orange
+                          : DcColors.border,
+                      width: 1),
+                ),
                 child: Row(
                   children: [
                     Container(
-                      width: featured ? 52 : 42,
-                      height: featured ? 52 : 42,
-                      color: Colors.black.withOpacity(0.18),
+                      width: featured ? 60 : 52,
+                      height: featured ? 60 : 52,
+                      decoration: BoxDecoration(
+                        color: featured ? Colors.white : tileColor,
+                        borderRadius: const BorderRadius.all(
+                            Radius.circular(12)),
+                      ),
                       alignment: Alignment.center,
                       child: Text(
                         '${index + 1}',
                         style: TextStyle(
-                            fontSize: featured ? 26 : 22,
+                            fontSize: featured ? 30 : 26,
                             fontWeight: FontWeight.w900,
-                            color: fg),
+                            color: featured ? DcColors.text : tileText),
                       ),
                     ),
                     const SizedBox(width: 14),
@@ -86,23 +95,33 @@ class ModesScreen extends StatelessWidget {
                           Text(
                             modePackName(pack),
                             style: TextStyle(
-                                fontSize: featured ? 24 : 20,
+                                fontSize: featured ? 27 : 23,
                                 fontWeight: FontWeight.w900,
-                                color: fg),
+                                color: titleColor),
                           ),
                           if (featured)
                             Text('YOU vs THE COMPUTER',
                                 style: TextStyle(
-                                    fontSize: 13,
+                                    fontSize: 14,
                                     fontWeight: FontWeight.w800,
-                                    color: fg.withOpacity(0.8))),
+                                    color: titleColor.withOpacity(0.75))),
                           Text(modePackDesc(pack),
                               style: TextStyle(
-                                  fontSize: 15, color: fg.withOpacity(0.9))),
+                                  fontSize: 16,
+                                  color: featured
+                                      ? titleColor.withOpacity(0.8)
+                                      : DcColors.muted)),
                         ],
                       ),
                     ),
-                    Icon(Icons.chevron_right, color: fg, size: 28),
+                    ShapePreview(
+                        shape: BallShape.circle,
+                        color: featured
+                            ? DcColors.text.withOpacity(0.85)
+                            : tileColor,
+                        size: 40),
+                    const Icon(Icons.chevron_right,
+                        color: DcColors.muted, size: 32),
                   ],
                 ),
               ),

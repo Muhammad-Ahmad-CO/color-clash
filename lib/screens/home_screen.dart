@@ -1,9 +1,15 @@
-// Color Cover — Home screen.
-// Flat dark background (matches the Pixel Tiles logo corners), logo image,
-// heavy grotesque title, flat sharp buttons. No gradients, no emoji.
+// Color Cover — Home screen (Dot Clash chrome, v3b).
+// Light grey page, white top bar with the centred wordmark, off-white
+// hero card with the Pixel Tiles logo, one orange pill CTA per screen
+// (VS COMPUTER first and biggest), white pill secondaries, bottom nav.
+// The preloader still shows the dark logo screen first; this is the
+// light home that follows it. No emoji anywhere.
 import 'package:flutter/material.dart';
 import '../data/game_data.dart';
+import '../game/coins.dart';
 import '../game/sound.dart';
+import '../game/stats.dart';
+import '../widgets/dot_chrome.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -12,70 +18,144 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  int _dailyClaimed = 0; // coins from today's daily reward, 0 = none.
+
+  @override
+  void initState() {
+    super.initState();
+    CoinsService.load();
+    SoundFx.load().then((_) {
+      if (mounted) setState(() {});
+    });
+    // Daily reward: +50 coins once per calendar day, claimed on open.
+    StatsService.claimDailyReward().then((claimed) {
+      if (mounted && claimed > 0) {
+        setState(() => _dailyClaimed = claimed);
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1B1A1F),
+      backgroundColor: DcColors.page,
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        centerTitle: true,
+        title: const Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                  text: 'COLOR ',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 2,
+                      color: DcColors.text)),
+              TextSpan(
+                  text: 'COVER',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 2,
+                      color: DcColors.orange)),
+            ],
+          ),
+          style: TextStyle(fontSize: 22),
+        ),
+      ),
+      bottomNavigationBar: const DotBottomNav(current: DcTab.home),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 20),
-              Center(
-                child: ClipRRect(
-                  borderRadius: const BorderRadius.all(Radius.circular(24)),
-                  child: Image.asset('assets/logo.png',
-                      width: 132, height: 132, fit: BoxFit.cover),
+              if (_dailyClaimed > 0)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: DcCard(
+                    color: const Color(0xFFFFF3D6),
+                    borderColor: DcColors.gold,
+                    borderWidth: 2,
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'DAILY REWARD',
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                                color: DcColors.text),
+                          ),
+                        ),
+                        Text(
+                          '+$_dailyClaimed COINS',
+                          style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              color: DcColors.orangeDark),
+                        ),
+                        const SizedBox(width: 8),
+                        InkWell(
+                          onTap: () => setState(() => _dailyClaimed = 0),
+                          child: const Icon(Icons.close,
+                              size: 20, color: DcColors.muted),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 18),
-              const Text(
-                'COLOR',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 52,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 4,
-                  color: Colors.white,
-                  height: 1.0,
+              DcCard(
+                padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+                child: Column(
+                  children: [
+                    ClipRRect(
+                      borderRadius:
+                          const BorderRadius.all(Radius.circular(16)),
+                      child: Image.asset('assets/logo.png',
+                          width: 140, height: 140, fit: BoxFit.cover),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'COLOR COVER',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 34,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 2,
+                        color: DcColors.text,
+                        height: 1.0,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Paint the arena. Steal the tiles.\nWin the battle in 90 seconds.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: 16,
+                          color: DcColors.muted,
+                          height: 1.4),
+                    ),
+                    const SizedBox(height: 14),
+                    const Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _Chip('2-4 PLAYERS'),
+                        _Chip('60 COLOURS'),
+                        _Chip('30 BALL SHAPES'),
+                        _Chip('OFFLINE'),
+                      ],
+                    ),
+                  ],
                 ),
-              ),
-              const Text(
-                'COVER',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 52,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 4,
-                  color: Color(0xFFFD6EA3),
-                  height: 1.0,
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Paint the arena. Steal the tiles.\nWin the battle in 90 seconds.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 18, color: Colors.white70, height: 1.4),
-              ),
-              const SizedBox(height: 12),
-              const Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 8,
-                children: [
-                  _Chip('2-4 PLAYERS'),
-                  _Chip('54 COLOURS'),
-                  _Chip('24 BALL SHAPES'),
-                  _Chip('OFFLINE'),
-                ],
               ),
               const Spacer(),
               // VS COMPUTER is first and biggest — impossible to miss.
-              _FlatButton(
+              DcPillButton(
                 label: 'VS COMPUTER',
-                background: const Color(0xFFFD6EA3),
-                foreground: const Color(0xFF210044),
+                height: 62,
+                fontSize: 22,
                 onPressed: () {
                   SoundFx.click();
                   Navigator.pushNamed(context, '/setup',
@@ -83,118 +163,96 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
               ),
               const SizedBox(height: 12),
-              _FlatButton(
+              DcSecondaryButton(
                 label: 'PLAY',
-                background: Colors.white,
-                foreground: const Color(0xFF1B1A1F),
                 onPressed: () {
                   SoundFx.click();
                   Navigator.pushNamed(context, '/setup');
                 },
               ),
               const SizedBox(height: 12),
-              _FlatButton(
-                label: 'MODES  (9)',
-                background: const Color(0xFF7C4DFF),
-                foreground: Colors.white,
+              DcSecondaryButton(
+                label: 'MODES  (10)',
                 onPressed: () {
                   SoundFx.click();
                   Navigator.pushNamed(context, '/modes');
                 },
               ),
               const SizedBox(height: 12),
-              _FlatButton(
+              Row(
+                children: [
+                  Expanded(
+                    child: DcSecondaryButton(
+                      label: 'HISTORY',
+                      onPressed: () {
+                        SoundFx.click();
+                        Navigator.pushNamed(context, '/history');
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: DcSecondaryButton(
+                      label: 'ACHIEVEMENTS',
+                      onPressed: () {
+                        SoundFx.click();
+                        Navigator.pushNamed(context, '/achievements');
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              DcSecondaryButton(
                 label: 'SHOP — COINS & TRAILS',
-                background: const Color(0xFFF5DA69),
-                foreground: const Color(0xFF1A0A00),
                 onPressed: () {
                   SoundFx.click();
                   Navigator.pushNamed(context, '/shop');
                 },
               ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: TextButton(
-                  onPressed: () {
-                    SoundFx.click();
-                    Navigator.pushNamed(context, '/how');
-                  },
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    side: const BorderSide(color: Colors.white54, width: 1.5),
-                    shape: const RoundedRectangleBorder(
-                        borderRadius: BorderRadius.zero),
-                  ),
-                  child: const Text('HOW TO PLAY',
-                      style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white)),
-                ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () {
+                  SoundFx.click();
+                  Navigator.pushNamed(context, '/how');
+                },
+                child: const Text('HOW TO PLAY',
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: DcColors.muted)),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 4),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Text('Sound: ',
-                      style: TextStyle(color: Colors.white70, fontSize: 16)),
+                      style:
+                          TextStyle(color: DcColors.muted, fontSize: 16)),
                   Switch(
                     value: !SoundFx.muted,
-                    activeColor: const Color(0xFFFD6EA3),
+                    activeColor: DcColors.orange,
                     onChanged: (v) {
-                      setState(() => SoundFx.muted = !v);
+                      SoundFx.setMuted(!v);
+                      setState(() {});
                       if (!SoundFx.muted) SoundFx.click();
                     },
                   ),
                   Text(SoundFx.muted ? 'OFF' : 'ON',
                       style: const TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.w700)),
+                          color: DcColors.text,
+                          fontWeight: FontWeight.w700)),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               const Text(
                 'No login. No internet. Free forever.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white38, fontSize: 14),
+                style: TextStyle(color: DcColors.muted, fontSize: 14),
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// Flat sharp-cornered button (the spec's visual language: no radius,
-/// no gradient, heavy caps type).
-class _FlatButton extends StatelessWidget {
-  const _FlatButton(
-      {required this.label,
-      required this.background,
-      required this.foreground,
-      required this.onPressed});
-  final String label;
-  final Color background;
-  final Color foreground;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: TextButton(
-        onPressed: onPressed,
-        style: TextButton.styleFrom(
-          backgroundColor: background,
-          foregroundColor: foreground,
-          padding: const EdgeInsets.symmetric(vertical: 18),
-          shape:
-              const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-          textStyle:
-              const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
-        ),
-        child: Text(label),
       ),
     );
   }
@@ -208,12 +266,15 @@ class _Chip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.12),
-        border: Border.all(color: Colors.white24),
+        color: Colors.white,
+        borderRadius: const BorderRadius.all(Radius.circular(999)),
+        border: Border.all(color: DcColors.border),
       ),
       child: Text(label,
           style: const TextStyle(
-              fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white)),
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: DcColors.text)),
     );
   }
 }

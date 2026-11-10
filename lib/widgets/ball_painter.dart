@@ -1,4 +1,4 @@
-// Color Cover — draws all 24 ball shapes + the arena.
+// Color Cover — draws all 30 ball shapes + the arena.
 // Reference look (REFERENCE_UI_SPEC.md): flat tiles with no grid lines and
 // no unpainted state, flat balls with no outline/gloss, power-up tiles as a
 // solid bright square + drawn icon (never a letter), "+" marks on wormhole
@@ -225,6 +225,95 @@ void drawBallShape(
         ..strokeCap = StrokeCap.round;
       canvas.drawArc(Rect.fromCircle(center: center, radius: r * 0.6), 0.15 * pi, 0.7 * pi, false, smile);
       break;
+    case BallShape.clover:
+      // Four leaves + centre.
+      for (var i = 0; i < 4; i++) {
+        final a = i * pi / 2;
+        canvas.drawCircle(
+            Offset(center.dx + cos(a) * r * 0.45, center.dy + sin(a) * r * 0.45),
+            r * 0.5,
+            paint);
+      }
+      canvas.drawCircle(center, r * 0.35, paint);
+      break;
+    case BallShape.rocket:
+      // Nose triangle + body + two fins + flame.
+      final rocket = Path();
+      rocket.moveTo(center.dx, center.dy - r);
+      rocket.lineTo(center.dx + r * 0.55, center.dy - r * 0.1);
+      rocket.lineTo(center.dx + r * 0.55, center.dy + r * 0.55);
+      rocket.lineTo(center.dx + r * 0.95, center.dy + r * 0.9);
+      rocket.lineTo(center.dx + r * 0.3, center.dy + r * 0.55);
+      rocket.lineTo(center.dx - r * 0.3, center.dy + r * 0.55);
+      rocket.lineTo(center.dx - r * 0.95, center.dy + r * 0.9);
+      rocket.lineTo(center.dx - r * 0.55, center.dy + r * 0.55);
+      rocket.lineTo(center.dx - r * 0.55, center.dy - r * 0.1);
+      rocket.close();
+      canvas.drawPath(rocket, paint);
+      break;
+    case BallShape.crown:
+      final crown = Path();
+      crown.moveTo(center.dx - r * 0.9, center.dy + r * 0.7);
+      crown.lineTo(center.dx - r * 0.9, center.dy - r * 0.2);
+      crown.lineTo(center.dx - r * 0.45, center.dy + r * 0.1);
+      crown.lineTo(center.dx, center.dy - r * 0.7);
+      crown.lineTo(center.dx + r * 0.45, center.dy + r * 0.1);
+      crown.lineTo(center.dx + r * 0.9, center.dy - r * 0.2);
+      crown.lineTo(center.dx + r * 0.9, center.dy + r * 0.7);
+      crown.close();
+      canvas.drawPath(crown, paint);
+      break;
+    case BallShape.anchor:
+      final line = Paint()
+        ..color = color
+        ..strokeWidth = max(2, r * 0.16)
+        ..strokeCap = StrokeCap.round;
+      // Ring on top.
+      canvas.drawCircle(
+          Offset(center.dx, center.dy - r * 0.62),
+          r * 0.24,
+          Paint()
+            ..color = color
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = max(2, r * 0.16));
+      // Shank + crossbar + flukes.
+      canvas.drawLine(Offset(center.dx, center.dy - r * 0.4),
+          Offset(center.dx, center.dy + r * 0.75), line);
+      canvas.drawLine(Offset(center.dx - r * 0.5, center.dy - r * 0.15),
+          Offset(center.dx + r * 0.5, center.dy - r * 0.15), line);
+      canvas.drawLine(Offset(center.dx - r * 0.85, center.dy + r * 0.35),
+          Offset(center.dx, center.dy + r * 0.75), line);
+      canvas.drawLine(Offset(center.dx + r * 0.85, center.dy + r * 0.35),
+          Offset(center.dx, center.dy + r * 0.75), line);
+      break;
+    case BallShape.bell:
+      final bell = Path();
+      bell.moveTo(center.dx - r * 0.85, center.dy + r * 0.55);
+      bell.quadraticBezierTo(center.dx - r * 0.85, center.dy - r * 0.8,
+          center.dx, center.dy - r * 0.8);
+      bell.quadraticBezierTo(center.dx + r * 0.85, center.dy - r * 0.8,
+          center.dx + r * 0.85, center.dy + r * 0.55);
+      bell.close();
+      canvas.drawPath(bell, paint);
+      canvas.drawRect(
+          Rect.fromCenter(
+              center: Offset(center.dx, center.dy + r * 0.62),
+              width: r * 1.9,
+              height: r * 0.28),
+          paint);
+      canvas.drawCircle(Offset(center.dx, center.dy + r * 0.9), r * 0.16, paint);
+      break;
+    case BallShape.gem:
+      canvas.drawPath(polygon(4, -pi / 2), paint);
+      final facet = Paint()
+        ..color = cut.color
+        ..strokeWidth = max(1.5, r * 0.1)
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(Offset(center.dx - r * 0.7, center.dy),
+          Offset(center.dx + r * 0.7, center.dy), facet);
+      canvas.drawLine(Offset(center.dx, center.dy - r),
+          Offset(center.dx, center.dy + r), facet);
+      break;
   }
 }
 
@@ -382,6 +471,41 @@ void drawPowerUpIcon(Canvas canvas, String id, Rect rect, Color glyph) {
           max(2, rect.width * 0.07),
           fill);
       break;
+    case 'freeze':
+      // Snowflake: three crossing bars + centre dot.
+      for (var i = 0; i < 3; i++) {
+        final a = i * pi / 3;
+        canvas.drawLine(
+            Offset(rect.center.dx - cos(a) * rect.width * 0.42,
+                rect.center.dy - sin(a) * rect.width * 0.42),
+            Offset(rect.center.dx + cos(a) * rect.width * 0.42,
+                rect.center.dy + sin(a) * rect.width * 0.42),
+            stroke);
+      }
+      canvas.drawCircle(rect.center, max(2, rect.width * 0.09), fill);
+      break;
+    case 'magnet':
+      // Horseshoe magnet: U-shape with two poles.
+      canvas.drawArc(
+          Rect.fromLTWH(rect.left + rect.width * 0.12, rect.top + rect.height * 0.08,
+              rect.width * 0.76, rect.height * 0.76),
+          pi,
+          pi,
+          false,
+          Paint()
+            ..color = glyph
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = max(2.5, rect.height * 0.16)
+            ..strokeCap = StrokeCap.round);
+      canvas.drawLine(
+          Offset(rect.left + rect.width * 0.12, rect.top + rect.height * 0.46),
+          Offset(rect.left + rect.width * 0.12, rect.top + rect.height * 0.92),
+          stroke);
+      canvas.drawLine(
+          Offset(rect.left + rect.width * 0.88, rect.top + rect.height * 0.46),
+          Offset(rect.left + rect.width * 0.88, rect.top + rect.height * 0.92),
+          stroke);
+      break;
     default:
       canvas.drawPath(starPath(rect.center, 5, rect.width * 0.45, rect.width * 0.2), fill);
   }
@@ -447,6 +571,80 @@ class _ShapePreviewPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _ShapePreviewPainter old) =>
+      old.shape != shape || old.color != color;
+}
+
+/// Is the tile (c, r) inside the arena shape? Same math as
+/// GameEngine._initPlayable — kept in sync so the setup preview shows the
+/// exact shape the match will use.
+bool arenaShapeCellPlayable(ArenaShape shape, int c, int r, int cols, int rows) {
+  final nx = (c + 0.5) / cols * 2 - 1; // -1..1
+  final ny = (r + 0.5) / rows * 2 - 1;
+  switch (shape) {
+    case ArenaShape.rectangle:
+      return true;
+    case ArenaShape.circle:
+      return (nx * nx + ny * ny) <= 1.0;
+    case ArenaShape.heart:
+      final x = nx * 1.1;
+      final y = -ny;
+      return ((x * x + y * y - 1) * (x * x + y * y - 1) * (x * x + y * y - 1) -
+              x * x * y * y * y) <=
+          0;
+    case ArenaShape.star:
+      final ang = atan2(ny, nx);
+      final dist = sqrt(nx * nx + ny * ny);
+      final starR = 0.55 + 0.45 * cos(ang * 5);
+      return dist <= starR;
+    case ArenaShape.maze:
+      final wallRow = r % 4 == 2 && c % 5 != 2;
+      final wallCol = c % 5 == 2 && r % 4 != 2;
+      return !(wallRow || wallCol);
+  }
+}
+
+/// Small widget that draws the real arena shape as a mini 18x24 grid
+/// (used in Setup's arena-shape picker). Playable tiles are filled with
+/// [color]; dead tiles stay transparent.
+class ArenaShapePreview extends StatelessWidget {
+  const ArenaShapePreview(
+      {super.key, required this.shape, required this.color, this.size = 56});
+  final ArenaShape shape;
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: Size(size, size * 4 / 3),
+      painter: _ArenaShapePreviewPainter(shape, color),
+    );
+  }
+}
+
+class _ArenaShapePreviewPainter extends CustomPainter {
+  _ArenaShapePreviewPainter(this.shape, this.color);
+  final ArenaShape shape;
+  final Color color;
+  static const _cols = 18;
+  static const _rows = 24;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final tileW = size.width / _cols;
+    final tileH = size.height / _rows;
+    final paint = Paint()..color = color;
+    for (var r = 0; r < _rows; r++) {
+      for (var c = 0; c < _cols; c++) {
+        if (!arenaShapeCellPlayable(shape, c, r, _cols, _rows)) continue;
+        canvas.drawRect(
+            Rect.fromLTWH(c * tileW, r * tileH, tileW, tileH), paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ArenaShapePreviewPainter old) =>
       old.shape != shape || old.color != color;
 }
 

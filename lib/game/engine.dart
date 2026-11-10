@@ -11,8 +11,8 @@ import 'match_theme.dart';
 
 class PowerUpOnField {
   PowerUpOnField(this.col, this.row, this.def);
-  final int col;
-  final int row;
+  int col; // mutable: MAGNET pulls power-up tiles across the arena.
+  int row;
   final PowerUpDef def;
 }
 
@@ -38,6 +38,7 @@ class BallState {
   double blackHoleUntil = 0;
   double infiltratorUntil = 0;
   double doublePaintUntil = 0;
+  double magnetUntil = 0; // MAGNET: pulls nearby power-up tiles to this ball.
   final List<Point<double>> trail = <Point<double>>[];
 }
 
@@ -46,11 +47,15 @@ class GameEngine {
       : players = config.players,
         cols = 18,
         rows = 24,
-        matchSeconds = 90 {
+        // TIME ATTACK is a 60-second blitz; every other mode is 90 seconds.
+        matchSeconds = config.pack == ModePack.timeAttack ? 60 : 90 {
     grid = List<int>.filled(cols * rows, -1);
     paintTime = List<double>.filled(cols * rows, -1000);
     playable = List<bool>.filled(cols * rows, true);
     ultimateMeters = List<double>.filled(players.length, 0);
+    tilesPainted = List<int>.filled(players.length, 0);
+    powerUpsCollected = List<int>.filled(players.length, 0);
+    timeLeft = matchSeconds.toDouble();
     _initPlayable();
     _initTerritory();
     _initBalls();
@@ -62,6 +67,8 @@ class GameEngine {
   final int cols;
   final int rows;
   final int matchSeconds;
+
+  bool get isTimeAttack => pack == ModePack.timeAttack;
 
   GameMode get mode => config.mode;
   ModePack get pack => config.pack;
@@ -83,9 +90,14 @@ class GameEngine {
   final Random _rng = Random();
 
   double time = 0;
-  double timeLeft = 90;
+  late double timeLeft;
   double _spawnTimer = 6;
   bool finished = false;
+
+  /// Match stats (for the end card + History + Achievements).
+  late List<int> tilesPainted; // tiles each player painted this match.
+  late List<int> powerUpsCollected; // power-ups each player collected.
+  int biggestLead = 0; // biggest tile-count gap between 1st and 2nd.
 
   /// Active power-up banners (reference stacks up to 4 at once, newest on
   /// top). Each entry: (player, text, visible-until time).
@@ -101,6 +113,10 @@ class GameEngine {
   double wormholeUntil = 0;
   final Map<int, Point<double>> steering = <int, Point<double>>{};
   final List<double> fortifyUntil = <double>[0, 0, 0, 0];
+  // FREEZE: until when each player's ball is frozen (enemy balls only).
+  final List<double> frozenUntil = <double>[0, 0, 0, 0];
+  // MAGNET pull is applied every 0.15 s, not every frame.
+  double _magnetTimer = 0;
 
   // Golden Tile (centre of the arena).
   int goldenCol = -1;
@@ -303,6 +319,16 @@ class GameEngine {
     return 1;
   }
 
+  /// Paint one tile for [player] and count it for match stats.
+  /// Chaos/Fire/Earthquake reassign tiles directly (environment, not
+  /// player-painted) and do not go through here.
+  void _setTile(int idx, int player) {
+    if (grid[idx] == player) return;
+    grid[idx] = player;
+    paintTime[idx] = time;
+    tilesPainted[player]++;
+  }
+
   void _paintAround(BallState b) {
     final radius = _paintRadius(b);
     final cc = b.x.round();
@@ -317,8 +343,7 @@ class GameEngine {
         final owner = grid[idx];
         if (owner == b.player) continue;
         if (owner >= 0 && fortifyUntil[owner] > time) continue;
-        grid[idx] = b.player;
-        paintTime[idx] = time;
+        _setTile(idx, b.player);
         if (ultimateEnabled) {
           ultimateMeters[b.player] =
               (ultimateMeters[b.player] + (b.doublePaintUntil > time ? 6 : 3)).clamp(0, 100);
@@ -336,9 +361,7 @@ class GameEngine {
     final rr = ball.y.round().clamp(0, rows - 1);
     for (var c = 0; c < cols; c++) {
       if (!isPlayableTile(c, rr)) continue;
-      final idx = tileIndex(c, rr);
-      grid[idx] = player;
-      paintTime[idx] = time;
+      _setTile(tileIndex(c, rr), player);
     }
     ultimateMeters[player] = 0;
     _showBanner(player, 'COLOR TSUNAMI!');
@@ -370,13 +393,13 @@ class GameEngine {
         if (!isPlayableTile(c, r)) continue;
         final idx = tileIndex(c, r);
         if (grid[idx] >= 0 && fortifyUntil[grid[idx]] > time) continue;
-        grid[idx] = b.player;
-        paintTime[idx] = time;
+        _setTile(idx, b.player);
       }
     }
   }
 
   void _applyPowerUp(BallState b, PowerUpDef def) {
+    powerUpsCollected[b.player]++;
     _showBanner(b.player, def.name);
     switch (def.id) {
       case 'speed':
@@ -406,6 +429,16 @@ class GameEngine {
       case 'bomb':
         _explodeBomb(b);
         break;
+      case 'freeze':
+        // FREEZE: every enemy ball stops moving for 3 seconds.
+        for (var i = 0; i < players.length; i++) {
+          if (i != b.player) frozenUntil[i] = time + 3;
+        }
+        break;
+      case 'magnet':
+        // MAGNET: nearby power-up tiles drift to this ball for 8 seconds.
+        b.magnetUntil = time + 8;
+        break;
       case 'tidal':
         final cc = b.x.round().clamp(0, cols - 1);
         final rr = b.y.round().clamp(0, rows - 1);
@@ -413,16 +446,14 @@ class GameEngine {
           if (!isPlayableTile(c, rr)) continue;
           final idx = tileIndex(c, rr);
           if (grid[idx] != b.player && !(grid[idx] >= 0 && fortifyUntil[grid[idx]] > time)) {
-            grid[idx] = b.player;
-            paintTime[idx] = time;
+            _setTile(idx, b.player);
           }
         }
         for (var r = 0; r < rows; r++) {
           if (!isPlayableTile(cc, r)) continue;
           final idx = tileIndex(cc, r);
           if (grid[idx] != b.player && !(grid[idx] >= 0 && fortifyUntil[grid[idx]] > time)) {
-            grid[idx] = b.player;
-            paintTime[idx] = time;
+            _setTile(idx, b.player);
           }
         }
         break;
@@ -613,8 +644,29 @@ class GameEngine {
       _spawnTimer = 6;
     }
 
+    // MAGNET: every 0.15 s, power-up tiles near a magnet ball drift one
+    // tile closer to it (Manhattan step, only within 6 tiles).
+    _magnetTimer -= dt;
+    if (_magnetTimer <= 0) {
+      _magnetTimer = 0.15;
+      for (final b in balls) {
+        if (b.magnetUntil <= time) continue;
+        for (final p in powerUps) {
+          final dx = b.x.round() - p.col;
+          final dy = b.y.round() - p.row;
+          final dist = dx.abs() + dy.abs();
+          if (dist > 6 || dist == 0) continue;
+          if (dx != 0) p.col += dx.sign;
+          if (dy != 0) p.row += dy.sign;
+        }
+      }
+    }
+
     for (final b in List<BallState>.from(balls)) {
       if (isVsBot && b.player == 1) _botSteer(b);
+
+      // FREEZE: a frozen ball does not move, paint or pick up anything.
+      if (frozenUntil[b.player] > time) continue;
 
       for (final other in balls) {
         if (other == b) continue;
@@ -714,6 +766,14 @@ class GameEngine {
           c.angle = atan2(ny, nx);
         }
       }
+    }
+
+    // Biggest lead so far: 1st-place tiles minus 2nd-place tiles.
+    final counts = tileCounts();
+    if (counts.length > 1) {
+      final sorted = List<int>.from(counts)..sort((a, b) => b - a);
+      final lead = sorted[0] - sorted[1];
+      if (lead > biggestLead) biggestLead = lead;
     }
   }
 }

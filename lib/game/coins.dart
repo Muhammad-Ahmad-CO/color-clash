@@ -1,4 +1,4 @@
-// Colour Clash — coins + shop ownership, stored on the phone.
+// Color Cover — coins + shop ownership, stored on the phone.
 // Uses shared_preferences (free, no account). All calls are guarded:
 // if storage ever fails, the game keeps working with memory only.
 import 'package:shared_preferences/shared_preferences.dart';
@@ -43,6 +43,14 @@ class CoinsService {
     coins += earned;
     await _save();
     return earned;
+  }
+
+  /// Add an arbitrary amount (achievement rewards, daily reward).
+  static Future<void> addCoins(int amount) async {
+    if (amount <= 0) return;
+    await load();
+    coins += amount;
+    await _save();
   }
 
   static Future<bool> buy(ShopItem item) async {
