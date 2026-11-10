@@ -1,6 +1,7 @@
 // Color Cover — static game data.
 // Counts are fixed by design: 62 colours (60 + 2 rare unlockables),
-// 30 ball shapes, 12 base power-ups + Bomb Ball = 13 total power-ups.
+// 30 ball shapes, 10 base power-ups + Bomb Ball + FREEZE + MAGNET + TRINITY
+// + TURRET = 15 total power-ups.
 // Do not change the counts without updating Setup + README.
 
 /// One pickable colour: a human name + an ARGB hex value.
@@ -262,9 +263,9 @@ class PowerUpDef {
   final String effect;
 }
 
-const int kPowerUpCount = 13;
+const int kPowerUpCount = 15;
 
-/// 10 base power-ups + Bomb Ball + FREEZE + MAGNET = 13 total.
+/// 10 base power-ups + Bomb Ball + FREEZE + MAGNET + TRINITY + TURRET = 15 total.
 /// NOTE: every `value` must be unique — the field tile uses it as its
 /// background colour, so two power-ups sharing a value look identical.
 const List<PowerUpDef> kPowerUps = [
@@ -281,6 +282,8 @@ const List<PowerUpDef> kPowerUps = [
   PowerUpDef('bomb', 'BOMB BALL', 'Explodes a 5x5 area to your colour!', 'B', 0xFFBF360C, 'Explodes a 5x5 area to your colour'),
   PowerUpDef('freeze', 'FREEZE', 'Freeze all enemy balls for 3 seconds.', 'Z', 0xFF00E5FF, 'Enemy balls stop for 3s'),
   PowerUpDef('magnet', 'MAGNET', 'Pull nearby power-up tiles to your ball for 8 seconds.', 'M', 0xFFFFD54F, 'Power-ups drift to you — 8s'),
+  PowerUpDef('trinity', 'TRINITY', 'Three balls at once for 10 seconds.', '3', 0xFFEC407A, 'Three balls at once — 10s'),
+  PowerUpDef('turret', 'TURRET', 'A turret auto-paints enemy tiles for 10 seconds.', 'R', 0xFF5C6BC0, 'Auto-paints enemy tiles — 10s'),
 ];
 
 PowerUpDef powerUpById(String id) =>

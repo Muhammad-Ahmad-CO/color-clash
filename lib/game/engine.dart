@@ -45,7 +45,30 @@ class BallState {
   double infiltratorUntil = 0;
   double doublePaintUntil = 0;
   double magnetUntil = 0; // MAGNET: pulls nearby power-up tiles to this ball.
+  /// TRINITY extras: engine time when this ball disappears (0 = permanent).
+  /// Only the two extra balls ever carry a value; the original never does.
+  double removeAt = 0;
   final List<Point<double>> trail = <Point<double>>[];
+}
+
+/// A placed TURRET: a stationary auto-painter owned by one player.
+/// Lives on one tile for 10 s; every 0.8 s it paints a random enemy tile
+/// within radius 5. One per player — re-pickup stays put, timer refreshes.
+class Turret {
+  Turret(
+      {required this.player,
+      required this.col,
+      required this.row,
+      required this.until,
+      required this.nextShotAt});
+  final int player;
+  final int col;
+  final int row;
+  double until;
+  double nextShotAt;
+  double aimAngle = 0; // barrel direction (radians, east = 0).
+  Point<int>? shotTarget; // last fired-at tile, for the tracer line.
+  double shotUntil = 0; // tracer visible while time < shotUntil.
 }
 
 class GameEngine {
@@ -97,6 +120,9 @@ class GameEngine {
   late List<double> ultimateMeters; // 0..100 per player
   final List<PowerUpOnField> powerUps = <PowerUpOnField>[];
   final Random _rng = Random();
+
+  /// Live turrets (at most one per player). Painter reads this list.
+  final List<Turret> turrets = <Turret>[];
 
   double time = 0;
   late double timeLeft;
@@ -345,6 +371,20 @@ class GameEngine {
     return 1;
   }
 
+  /// Is tile (c, r) occupied by a live turret? A turret's tile cannot be
+  /// repainted while the turret lives — otherwise the painter would draw a
+  /// turret on territory it no longer owns. Enforced centrally in _setTile
+  /// plus the direct grid writers (Earthquake/Fire).
+  bool _isTurretTile(int c, int r) => turrets.any((t) => t.col == c && t.row == r);
+  bool _isTurretTileIdx(int idx) => _isTurretTile(idx % cols, idx ~/ cols);
+
+  Turret? _turretOf(int player) {
+    for (final t in turrets) {
+      if (t.player == player) return t;
+    }
+    return null;
+  }
+
   /// Paint one tile for [player] and count it for match stats.
   /// Chaos/Fire/Earthquake reassign tiles directly (environment, not
   /// player-painted) and do not go through here.
@@ -353,6 +393,7 @@ class GameEngine {
   /// at 1. Bomb/Tidal/Tsunami also paint through here, so a big blast
   /// counts as a big combo — that is the reward for the blast.
   void _setTile(int idx, int player) {
+    if (_isTurretTileIdx(idx)) return;
     if (grid[idx] == player) return;
     grid[idx] = player;
     paintTime[idx] = time;
@@ -498,6 +539,51 @@ class GameEngine {
         // MAGNET: nearby power-up tiles drift to this ball for 8 seconds.
         b.magnetUntil = time + 8;
         break;
+      case 'trinity':
+        // TRINITY: two extra balls for 10 s. Re-pickup refreshes the
+        // timer and tops up to 2 extras (never stacks to 4). Extras
+        // inherit the collector's active timed buffs at spawn, so a
+        // ghost collector's extras pass through balls too.
+        final liveExtras = balls
+            .where((e) => e.player == b.player && e.removeAt > time)
+            .toList();
+        for (final e in liveExtras) {
+          e.removeAt = time + 10;
+        }
+        final missing = 2 - liveExtras.length;
+        for (var i = 0; i < missing; i++) {
+          final spread = i == 0 ? -0.7 : 0.7; // ±40° from the collector.
+          final extra = BallState(
+              player: b.player, x: b.x, y: b.y, angle: b.angle + spread);
+          extra.removeAt = time + 10;
+          extra.speedUntil = b.speedUntil;
+          extra.nitroUntil = b.nitroUntil;
+          extra.wreckingUntil = b.wreckingUntil;
+          extra.colossusUntil = b.colossusUntil;
+          extra.ghostUntil = b.ghostUntil;
+          extra.blackHoleUntil = b.blackHoleUntil;
+          extra.infiltratorUntil = b.infiltratorUntil;
+          extra.doublePaintUntil = b.doublePaintUntil;
+          extra.magnetUntil = b.magnetUntil;
+          balls.add(extra);
+        }
+        break;
+      case 'turret':
+        // TURRET: a stationary auto-painter on the pickup tile for 10 s.
+        // One per player; re-pickup stays put and refreshes the timer.
+        final existing = _turretOf(b.player);
+        if (existing != null) {
+          existing.until = time + 10;
+        } else {
+          turrets.add(Turret(
+            player: b.player,
+            col: b.x.round().clamp(0, cols - 1),
+            row: b.y.round().clamp(0, rows - 1),
+            until: time + 10,
+            nextShotAt: time + 0.8,
+          ));
+        }
+        break;
       case 'tidal':
         final cc = b.x.round().clamp(0, cols - 1);
         final rr = b.y.round().clamp(0, rows - 1);
@@ -550,11 +636,13 @@ class GameEngine {
     var c = _rng.nextInt(cols);
     var r = _rng.nextInt(rows);
     for (var tries = 0; tries < 12; tries++) {
-      if (isPlayableTile(c, r) && !powerUps.any((p) => p.col == c && p.row == r)) break;
+      if (isPlayableTile(c, r) &&
+          !_isTurretTile(c, r) &&
+          !powerUps.any((p) => p.col == c && p.row == r)) break;
       c = _rng.nextInt(cols);
       r = _rng.nextInt(rows);
     }
-    if (!isPlayableTile(c, r)) return;
+    if (!isPlayableTile(c, r) || _isTurretTile(c, r)) return;
     powerUps.add(PowerUpOnField(c, r, def, mystery: mystery));
   }
 
@@ -568,6 +656,7 @@ class GameEngine {
       // Shuffle about 15% of the tiles to a random player.
       for (var i = 0; i < grid.length; i++) {
         if (!playable[i] || grid[i] < 0) continue;
+        if (_isTurretTileIdx(i)) continue;
         if (_rng.nextDouble() < 0.15) {
           grid[i] = _rng.nextInt(players.length);
           paintTime[i] = time;
@@ -633,10 +722,16 @@ class GameEngine {
     // Drop expired banners (and expired wormhole marks).
     banners.removeWhere((b) => time >= b.until);
     if (time >= wormholeUntil) wormholeTiles.clear();
+    // Drop expired turrets and expired TRINITY extra balls (originals
+    // have removeAt 0 and are never removed here).
+    turrets.removeWhere((t) => time >= t.until);
+    balls.removeWhere((b) => b.removeAt > 0 && time >= b.removeAt);
 
     // Sudden Death: last 10 seconds, arena shrinks one ring at a time.
     if (suddenDeathEnabled && timeLeft <= 10) {
       shrinkLevel = ((10 - timeLeft) / 3).ceil().clamp(0, 3);
+      // A turret whose tile shrank into the dead ring is destroyed.
+      turrets.removeWhere((t) => !isPlayableTile(t.col, t.row));
     }
 
     // Chaos Events every 20 seconds.
@@ -652,6 +747,7 @@ class GameEngine {
           _fireTimer = 0.5;
           for (var i = 0; i < 3; i++) {
             final idx = _rng.nextInt(grid.length);
+            if (_isTurretTileIdx(idx)) continue;
             if (playable[idx] && grid[idx] >= 0 && isPlayableTile(idx % cols, idx ~/ cols)) {
               // FIRE converts tiles to a random player — the reference has
               // no unpainted tiles, so tiles are never set to -1.
@@ -675,6 +771,7 @@ class GameEngine {
       if (lowest >= 0) {
         eliminated.add(lowest);
         balls.removeWhere((b) => b.player == lowest);
+        turrets.removeWhere((t) => t.player == lowest);
         // The eliminated player's tiles go to the current leader — the
         // reference has no unpainted tiles, so tiles are never set to -1.
         final aliveCounts = tileCounts();
@@ -723,6 +820,40 @@ class GameEngine {
           if (dy != 0) p.row += dy.sign;
         }
       }
+    }
+
+    // TURRET: every 0.8 s each live turret fires at a random enemy tile
+    // within Euclidean radius 5 — team-aware (never a teammate's tile),
+    // playable, not fortified, not another turret's tile. nextShotAt
+    // advances after EVERY attempt, so a turret with no target in range
+    // retries 0.8 s later instead of stalling or machine-gunning.
+    // Turrets fire even while their owner is frozen — they are automated.
+    for (final t in List<Turret>.from(turrets)) {
+      if (time < t.nextShotAt) continue;
+      t.nextShotAt = time + 0.8;
+      final candidates = <Point<int>>[];
+      for (var r = t.row - 5; r <= t.row + 5; r++) {
+        for (var c = t.col - 5; c <= t.col + 5; c++) {
+          final dc = c - t.col;
+          final dr = r - t.row;
+          if (dc * dc + dr * dr > 25) continue;
+          if (!isPlayableTile(c, r)) continue;
+          if (_isTurretTile(c, r)) continue;
+          final idx = tileIndex(c, r);
+          final owner = grid[idx];
+          if (owner < 0) continue;
+          if (teamOf(owner) == teamOf(t.player)) continue;
+          if (fortifyUntil[owner] > time) continue;
+          candidates.add(Point<int>(c, r));
+        }
+      }
+      if (candidates.isEmpty) continue;
+      final target = candidates[_rng.nextInt(candidates.length)];
+      t.aimAngle = atan2(
+          (target.y - t.row).toDouble(), (target.x - t.col).toDouble());
+      t.shotTarget = target;
+      t.shotUntil = time + 0.25;
+      _setTile(tileIndex(target.x, target.y), t.player);
     }
 
     // Combo reset: a 2-second gap without painting ends the combo.
@@ -833,6 +964,14 @@ class GameEngine {
       }
     }
 
+    // Ball-ball collision: equal-mass ELASTIC deflection, like the
+    // reference videos. Positions separate along the collision normal;
+    // the velocity components along the normal are exchanged and the
+    // tangential components kept. Direction-only elastic: ball speed is
+    // re-derived from buffs every frame, so magnitudes are not
+    // exchanged — directions are exactly right. A frozen ball is
+    // infinite mass: only the live ball reflects, and the frozen ball's
+    // angle is left untouched so it keeps its heading when it unfreezes.
     for (var i = 0; i < balls.length; i++) {
       for (var j = i + 1; j < balls.length; j++) {
         final a = balls[i];
@@ -842,17 +981,57 @@ class GameEngine {
         final dy = c.y - a.y;
         final d = sqrt(dx * dx + dy * dy);
         final minD = _ballRadius(a) + _ballRadius(c);
-        if (d > 0.01 && d < minD) {
-          final push = (minD - d) / 2;
-          final nx = dx / d;
-          final ny = dy / d;
-          a.x -= nx * push;
-          a.y -= ny * push;
-          c.x += nx * push;
-          c.y += ny * push;
-          a.angle = atan2(-ny, -nx);
-          c.angle = atan2(ny, nx);
+        if (d >= minD) continue;
+        // Collision normal (from a to c). Balls spawned on top of each
+        // other (TRINITY) get the default east normal.
+        final nx = d > 0.01 ? dx / d : 1.0;
+        final ny = d > 0.01 ? dy / d : 0.0;
+        // Positional separation: half the overlap each, along the normal.
+        final push = (minD - d) / 2;
+        a.x -= nx * push;
+        a.y -= ny * push;
+        c.x += nx * push;
+        c.y += ny * push;
+        if (d <= 0.01) continue; // no meaningful velocities to exchange.
+        final aFrozen = frozenUntil[a.player] > time;
+        final cFrozen = frozenUntil[c.player] > time;
+        if (aFrozen && cFrozen) continue; // separation only.
+        final sa = _ballSpeed(a);
+        final sc = _ballSpeed(c);
+        final vax = cos(a.angle) * sa;
+        final vay = sin(a.angle) * sa;
+        final vcx = cos(c.angle) * sc;
+        final vcy = sin(c.angle) * sc;
+        // A post-collision velocity near zero (near-exact cancellation)
+        // keeps the old angle: atan2(0, 0) would snap the ball east.
+        double reflect(double vx, double vy, double vn) {
+          final rx = vx - 2 * vn * nx;
+          final ry = vy - 2 * vn * ny;
+          return sqrt(rx * rx + ry * ry) > 0.5
+              ? atan2(ry, rx)
+              : atan2(vy, vx);
         }
+        if (aFrozen) {
+          // c bounces off the frozen a.
+          final vcn = vcx * nx + vcy * ny;
+          if (vcn < 0) c.angle = reflect(vcx, vcy, vcn);
+          continue;
+        }
+        if (cFrozen) {
+          // a bounces off the frozen c.
+          final van = vax * nx + vay * ny;
+          if (van > 0) a.angle = reflect(vax, vay, van);
+          continue;
+        }
+        // Both free: exchange the normal components.
+        final vn = (vax - vcx) * nx + (vay - vcy) * ny;
+        if (vn <= 0) continue; // already separating — no impulse.
+        final nax = vax - vn * nx;
+        final nay = vay - vn * ny;
+        final ncx = vcx + vn * nx;
+        final ncy = vcy + vn * ny;
+        if (sqrt(nax * nax + nay * nay) > 0.5) a.angle = atan2(nay, nax);
+        if (sqrt(ncx * ncx + ncy * ncy) > 0.5) c.angle = atan2(ncy, ncx);
       }
     }
 

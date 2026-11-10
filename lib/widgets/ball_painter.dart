@@ -542,6 +542,36 @@ void drawPowerUpIcon(Canvas canvas, String id, Rect rect, Color glyph) {
           rect.width * 0.09,
           fill);
       break;
+    case 'trinity':
+      // Three balls in a triangle: one on top, two below.
+      canvas.drawCircle(
+          Offset(rect.center.dx, rect.top + rect.height * 0.26),
+          rect.width * 0.2,
+          fill);
+      canvas.drawCircle(
+          Offset(rect.left + rect.width * 0.26, rect.top + rect.height * 0.72),
+          rect.width * 0.2,
+          fill);
+      canvas.drawCircle(
+          Offset(rect.left + rect.width * 0.74, rect.top + rect.height * 0.72),
+          rect.width * 0.2,
+          fill);
+      break;
+    case 'turret':
+      // Rook / castle: three battlements on top of a solid base.
+      canvas.drawRect(
+          Rect.fromLTWH(rect.left + rect.width * 0.16,
+              rect.top + rect.height * 0.42, rect.width * 0.68,
+              rect.height * 0.48),
+          fill);
+      for (var i = 0; i < 3; i++) {
+        canvas.drawRect(
+            Rect.fromLTWH(rect.left + rect.width * (0.16 + i * 0.24),
+                rect.top + rect.height * 0.14, rect.width * 0.16,
+                rect.height * 0.3),
+            fill);
+      }
+      break;
     default:
       canvas.drawPath(starPath(rect.center, 5, rect.width * 0.45, rect.width * 0.2), fill);
   }
@@ -810,6 +840,42 @@ class ArenaPainter extends CustomPainter {
       final tileColor = Color(p.def.value);
       canvas.drawRect(rect, Paint()..color = tileColor);
       drawPowerUpIcon(canvas, p.def.id, iconRect, contrastTextColor(tileColor));
+    }
+
+    // Turrets: stationary auto-painters on their owner's colour tile
+    // (the tile is unpaintable while the turret lives, so the grid colour
+    // and the turret owner always agree). Rook glyph + a barrel aimed at
+    // the last target + a brief tracer line on each shot.
+    for (final t in engine.turrets) {
+      final tileColor = Color(players[t.player].colour.value);
+      final trect = Rect.fromLTWH(t.col * tileW, t.row * tileH, tileW, tileH);
+      canvas.drawRect(trect, Paint()..color = tileColor);
+      final glyph = contrastTextColor(tileColor);
+      final tcenter = Offset((t.col + 0.5) * tileW, (t.row + 0.5) * tileH);
+      canvas.drawLine(
+          tcenter,
+          Offset(tcenter.dx + cos(t.aimAngle) * tileW * 0.45,
+              tcenter.dy + sin(t.aimAngle) * tileH * 0.45),
+          Paint()
+            ..color = glyph
+            ..strokeWidth = max(2, tileW * 0.08)
+            ..strokeCap = StrokeCap.round);
+      drawPowerUpIcon(
+          canvas,
+          'turret',
+          Rect.fromLTWH(t.col * tileW + tileW * 0.14,
+              t.row * tileH + tileH * 0.14, tileW * 0.72, tileH * 0.72),
+          glyph);
+      if (t.shotTarget != null && now < t.shotUntil) {
+        canvas.drawLine(
+            tcenter,
+            Offset((t.shotTarget!.x + 0.5) * tileW,
+                (t.shotTarget!.y + 0.5) * tileH),
+            Paint()
+              ..color = Colors.white.withOpacity(0.85)
+              ..strokeWidth = max(1.5, tileW * 0.06)
+              ..strokeCap = StrokeCap.round);
+      }
     }
 
     // Balls.

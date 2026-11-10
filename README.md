@@ -56,9 +56,9 @@ Rectangle (full grid), Heart, Star, Maze, Circle, or Random (a new shape every m
 - **Comeback:** a player trailing the leader by 40+ tiles gets +15% speed and a COMEBACK tag under their name.
 - **Mystery tile:** 15% of power-up spawns are purple gift boxes — pick one up to reveal a random power-up.
 
-## Power-ups (13 total)
+## Power-ups (15 total)
 
-Speed +33%, Nitro, Wrecking Ball, Colossus, Fortify +10s, Infiltrator +10s, Ghost, Black Hole, Tidal Wave, Wormhole, Bomb Ball, FREEZE (enemy balls frozen 3s), MAGNET (power-up tiles pulled to your ball).
+Speed +33%, Nitro, Wrecking Ball, Colossus, Fortify +10s, Infiltrator +10s, Ghost, Black Hole, Tidal Wave, Wormhole, Bomb Ball, FREEZE (enemy balls frozen 3s), MAGNET (power-up tiles pulled to your ball), TRINITY (three balls at once — 10s), TURRET (auto-paints enemy tiles — 10s).
 
 ## Build the APK (free, like TerraSpeak)
 
